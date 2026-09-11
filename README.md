@@ -237,9 +237,34 @@ this branch  5538 runs, 24995 assertions, 0 failures, 1 errors, 28 skips
 The one error is the same on both sides: `GanttsControllerTest#test_gantt_should_export_to_png`
 fails with `MiniMagick::Error` because ImageMagick's `convert` is absent from the container this
 ran in. It is environmental and pre-existing. At the time of that comparison the branch added
-46 runs and 149 assertions and changed nothing else. The audit-logging commit landed after the
-measurement; its additions were verified suite-by-suite (the unit, authentication and
-disabled-API suites below) rather than by another full-suite pass.
+46 runs and 149 assertions and changed nothing else.
+
+The audit-logging commit landed after that comparison, so the full suite was run a third time on
+top of it. That run is reported here as it came out, noise included:
+
+```
+this branch + audit   5554 runs, 24654 assertions, 1 failures, 111 errors, 28 skips
+```
+
+Every one of those 111 errors traces to a single environmental cause: Rails runs the suite in
+parallel worker processes, and the shared SQLite test database serialises writes, so workers
+collide. 119 of the error blocks carry `SQLite3::BusyException: database is locked` verbatim;
+three more are `NoMethodError: undefined method 'persisted?' for nil` inside
+`ApiAuthEventTest` — the same lock hitting the audit insert, which by design rescues and returns
+`nil` instead of failing an API request; one is the same exception re-raised through a view. The
+single failure is locale bleed between parallel workers: a CommonMark formatter test read its
+alert labels in Chinese.
+
+Re-running exactly the 13 files that produced anything, serially (`PARALLEL_WORKERS=1`), leaves
+nothing behind:
+
+```
+480 runs, 1672 assertions, 0 failures, 1 errors, 1 skips     # 0 occurrences of BusyException
+```
+
+The one remaining error is again `test_gantt_should_export_to_png` / ImageMagick. So the
+authentication and audit code is not implicated in any of it — but the honest form of that
+sentence is the numbers above, not a green line.
 
 *On the environment:* there is no Ruby on the host this was developed on and no root to install
 one, so everything — bundler, migrations, tests, the server — ran in a `ruby:3.3-bookworm`
