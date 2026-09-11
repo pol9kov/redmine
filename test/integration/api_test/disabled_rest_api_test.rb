@@ -41,6 +41,34 @@ class Redmine::ApiTest::DisabledRestApiTest < Redmine::ApiTest::Base
     assert_response :forbidden
   end
 
+  def test_with_a_valid_personal_access_token
+    @user = User.generate!
+    @token =
+      PersonalAccessToken.create!(
+        :user => @user, :name => 'API test', :expires_at => 30.days.from_now
+      )
+
+    get "/news.xml?key=#{@token.plain_value}"
+    assert_response :forbidden
+
+    get "/news.json?key=#{@token.plain_value}"
+    assert_response :forbidden
+  end
+
+  def test_with_valid_personal_access_token_http_authentication
+    @user = User.generate!
+    @token =
+      PersonalAccessToken.create!(
+        :user => @user, :name => 'API test', :expires_at => 30.days.from_now
+      )
+
+    get "/news.xml", :headers => credentials(@token.plain_value, 'X')
+    assert_response :forbidden
+
+    get "/news.json", :headers => credentials(@token.plain_value, 'X')
+    assert_response :forbidden
+  end
+
   def test_with_valid_username_password_http_authentication
     @user = User.generate! do |user|
       user.password = 'my_password'

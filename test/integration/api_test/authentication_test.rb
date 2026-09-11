@@ -137,6 +137,26 @@ class Redmine::ApiTest::AuthenticationTest < Redmine::ApiTest::Base
     assert_response :unauthorized
   end
 
+  # Redmine's `key` credential is accepted on any action that declares
+  # accept_api_auth, whatever the requested format — find_current_user gates the
+  # branch on accept_api_auth?, not on api_request?. A personal access token
+  # therefore behaves on an HTML request exactly as the API key already does.
+  # What it must NOT do, and this is the property worth pinning, is open a
+  # session: the credential authenticates one request and leaves no cookie.
+  def test_personal_access_token_should_authenticate_like_an_api_key_without_opening_a_session
+    with_settings :login_required => '1' do
+      token = generate_personal_access_token
+      api_key = Token.create!(:user => User.generate!, :action => 'api')
+
+      get "/issues?key=#{api_key.value}"
+      api_key_status = response.status
+
+      get "/issues?key=#{token.plain_value}"
+      assert_equal api_key_status, response.status
+      assert_nil session[:user_id]
+    end
+  end
+
   def test_api_should_deny_auth_using_invalid_personal_access_token
     generate_personal_access_token
     ['rmpat_invalid', PersonalAccessToken.generate_value].each do |value|
