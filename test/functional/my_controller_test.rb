@@ -862,13 +862,13 @@ class MyControllerTest < Redmine::ControllerTest
     assert_select "tr#personal-access-token-#{token.id}" do
       assert_select 'td.name', :text => 'CI server'
       assert_select 'td.status', :text => 'Active'
-      assert_select 'td.last_used_at', :text => 'none'
+      assert_select 'td.last_used_on', :text => 'none'
       assert_select 'td.buttons a[href=?][data-method=post]',
                     "/my/personal_access_tokens/#{token.id}/revoke"
     end
     assert_select 'form#new_personal_access_token_form' do
       assert_select 'input[name=?]', 'personal_access_token[name]'
-      assert_select 'select[name=?]', 'personal_access_token[expires_at]' do
+      assert_select 'select[name=?]', 'personal_access_token[expires_on]' do
         assert_select 'option', :text => '30 days'
       end
     end
@@ -877,7 +877,7 @@ class MyControllerTest < Redmine::ControllerTest
   def test_personal_access_tokens_should_show_the_state_of_each_token
     active = generate_personal_access_token(:name => 'Active token')
     expired = generate_personal_access_token(:name => 'Expired token')
-    expired.update!(:expires_at => 1.day.ago)
+    expired.update!(:expires_on => 1.day.ago)
     revoked = generate_personal_access_token(:name => 'Revoked token').revoke!
 
     get :personal_access_tokens
@@ -920,7 +920,7 @@ class MyControllerTest < Redmine::ControllerTest
         :create_personal_access_token,
         :params => {
           :personal_access_token => {
-            :name => 'Laptop', :expires_at => 30.days.from_now.iso8601
+            :name => 'Laptop', :expires_on => 30.days.from_now.iso8601
           }
         }
       )
@@ -944,7 +944,7 @@ class MyControllerTest < Redmine::ControllerTest
       :create_personal_access_token,
       :params => {
         :personal_access_token => {
-          :name => 'Laptop', :expires_at => 30.days.from_now.iso8601
+          :name => 'Laptop', :expires_on => 30.days.from_now.iso8601
         }
       }
     )
@@ -964,7 +964,7 @@ class MyControllerTest < Redmine::ControllerTest
         :create_personal_access_token,
         :params => {
           :personal_access_token => {
-            :name => 'Laptop', :expires_at => 30.days.from_now.iso8601,
+            :name => 'Laptop', :expires_on => 30.days.from_now.iso8601,
             :user_id => 3
           }
         }
@@ -979,7 +979,7 @@ class MyControllerTest < Redmine::ControllerTest
       post(
         :create_personal_access_token,
         :params => {
-          :personal_access_token => {:name => '', :expires_at => ''}
+          :personal_access_token => {:name => '', :expires_on => ''}
         }
       )
     end
@@ -995,7 +995,7 @@ class MyControllerTest < Redmine::ControllerTest
         :create_personal_access_token,
         :params => {
           :personal_access_token => {
-            :name => 'Laptop', :expires_at => 1.day.ago.iso8601
+            :name => 'Laptop', :expires_on => 1.day.ago.iso8601
           }
         }
       )
@@ -1021,7 +1021,7 @@ class MyControllerTest < Redmine::ControllerTest
 
     post :revoke_personal_access_token, :params => {:id => token.id}
     assert_response :not_found
-    assert_nil token.reload.revoked_at
+    assert_nil token.reload.revoked_on
   end
 
   def test_revoke_personal_access_token_should_not_be_reachable_with_get
@@ -1038,7 +1038,7 @@ class MyControllerTest < Redmine::ControllerTest
     PersonalAccessToken.create!(
       {
         :user => User.find(2), :name => 'Test token',
-        :expires_at => 30.days.from_now
+        :expires_on => 30.days.from_now
       }.merge(attributes)
     )
   end

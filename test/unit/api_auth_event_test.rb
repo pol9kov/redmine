@@ -27,7 +27,7 @@ class ApiAuthEventTest < ActiveSupport::TestCase
 
   def generate_token
     PersonalAccessToken.create!(
-      :user => @user, :name => 'Audit test', :expires_at => 30.days.from_now
+      :user => @user, :name => 'Audit test', :expires_on => 30.days.from_now
     )
   end
 

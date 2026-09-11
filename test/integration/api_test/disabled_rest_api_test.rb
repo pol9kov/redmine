@@ -45,7 +45,7 @@ class Redmine::ApiTest::DisabledRestApiTest < Redmine::ApiTest::Base
     @user = User.generate!
     @token =
       PersonalAccessToken.create!(
-        :user => @user, :name => 'API test', :expires_at => 30.days.from_now
+        :user => @user, :name => 'API test', :expires_on => 30.days.from_now
       )
 
     get "/news.xml?key=#{@token.plain_value}"
@@ -59,7 +59,7 @@ class Redmine::ApiTest::DisabledRestApiTest < Redmine::ApiTest::Base
     @user = User.generate!
     @token =
       PersonalAccessToken.create!(
-        :user => @user, :name => 'API test', :expires_at => 30.days.from_now
+        :user => @user, :name => 'API test', :expires_on => 30.days.from_now
       )
 
     get "/news.xml", :headers => credentials(@token.plain_value, 'X')
@@ -96,7 +96,7 @@ class Redmine::ApiTest::DisabledRestApiTest < Redmine::ApiTest::Base
     @user = User.generate!
     @token =
       PersonalAccessToken.create!(
-        :user => @user, :name => 'API test', :expires_at => 30.days.from_now
+        :user => @user, :name => 'API test', :expires_on => 30.days.from_now
       )
     @key = Token.create!(:user => @user, :action => 'api')
 

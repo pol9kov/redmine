@@ -33,7 +33,7 @@ each independently revocable, stored as a digest, with a mandatory lifetime and 
 | storage | plaintext `tokens.value` | SHA256 digest only |
 | expiry | none | mandatory, validated on create |
 | revocation | reset the single key | per token, independent |
-| usage visible | no | `last_used_at` |
+| usage visible | no | `last_used_on` |
 
 The old API key **keeps working unchanged**. `User.find_by_api_credential` tries a personal access
 token first and falls back to `find_by_api_key`, so every existing integration, and every existing
@@ -114,16 +114,16 @@ one indexed lookup on the unique `hashed_value`. The digest comparison additiona
 lookup itself is already the comparison, so `secure_compare` here is belt-and-braces, not the thing
 that closes a timing channel — it is cheap and it makes the intent explicit for the next reader.
 
-**Expiry** is mandatory (`validates_presence_of :expires_at`) and must be in the future when the
+**Expiry** is mandatory (`validates_presence_of :expires_on`) and must be in the future when the
 token is created. There is deliberately no "never expires" option: making the safe choice the only
 choice is why this feature is worth having over the existing API key.
 
-**Revocation is soft.** `revoked_at` is set, the row stays. This is a divergence from the prior art
+**Revocation is soft.** `revoked_on` is set, the row stays. This is a divergence from the prior art
 in the ticket (see below) and it is on purpose: after an incident the question asked is "what did
 this credential do and when did we kill it", and a deleted row cannot answer. The row is also what
-lets `last_used_at` remain meaningful post-mortem.
+lets `last_used_on` remain meaningful post-mortem.
 
-**`last_used_at` is throttled** to one write per hour per token (`LAST_USED_UPDATE_INTERVAL`).
+**`last_used_on` is throttled** to one write per hour per token (`LAST_USED_UPDATE_INTERVAL`).
 Without the throttle, every authenticated GET turns into a write — on a busy integration that is a
 row-level write amplification of the entire API. One-hour granularity is enough to answer the only
 question the field is for: is this token still in use, and roughly when did it stop.
@@ -170,8 +170,8 @@ Where this branch deliberately differs:
 
 | | prior-art patch | here | why |
 |---|---|---|---|
-| revocation | `destroy` — row deleted | `revoked_at` — row kept | a deleted credential cannot be investigated |
-| expiry column | `expires_on` (date) | `expires_at` (datetime) | "expires at end of day in whose timezone" is a question with no good answer on an API credential |
+| revocation | `destroy` — row deleted | `revoked_on` — row kept | a deleted credential cannot be investigated |
+| expiry precision | `expires_on` is a `date` | `expires_on` is a `datetime` | "expires at end of day in whose timezone" is a question with no good answer on an API credential |
 | scope of the patch | PAT + scopes + audit log in one | PAT only | the maintainer (Holger Just, comment #12) asked precisely for the opposite: *"each of the features proposed here are rather large and complex on its own… we should try to separate these features into separate issues"* |
 
 The third row is the important one. That patch was reviewed and the review said: too large, split it.
@@ -278,7 +278,7 @@ End-to-end, against a running server (enable the REST API first in
 ```bash
 # create a token in the console
 bin/rails runner 'p PersonalAccessToken.create!(user: User.find_by_login("admin"),
-                  name: "demo", expires_at: 30.days.from_now).plain_value'
+                  name: "demo", expires_on: 30.days.from_now).plain_value'
 
 curl -s -o /dev/null -w '%{http_code}\n' -H "X-Redmine-API-Key: $TOKEN" localhost:3000/users/current.json  # 200
 curl -s -o /dev/null -w '%{http_code}\n' -H "X-Redmine-API-Key: garbage"  localhost:3000/users/current.json  # 401
@@ -290,7 +290,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -u "$TOKEN:x"  localhost:3000/users/cur
 - A token grants **the user's full permissions**. Until scopes land, a personal access token is
   exactly as powerful as the password, minus the web session. It is an improvement in *blast radius
   over time* (revocable, expiring, per-integration) and not yet in *blast radius per request*.
-- `last_used_at` is throttled to an hour, so it answers "is this alive", not "when exactly was the
+- `last_used_on` is throttled to an hour, so it answers "is this alive", not "when exactly was the
   last call". It is not an audit log and should not be read as one.
 - **A `key=` credential is not API-format-only, and that surprised me.** `find_current_user` gates
   the credential branch on `Setting.rest_api_enabled? && accept_api_auth?` — on the *action*, not on

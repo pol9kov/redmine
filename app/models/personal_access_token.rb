@@ -30,7 +30,7 @@ class PersonalAccessToken < ApplicationRecord
   PREFIX = 'rmpat_'
   VALUE_FORMAT = /\A#{PREFIX}[0-9a-f]{40}\z/
 
-  # last_used_at is refreshed at most once per interval, so that a burst of
+  # last_used_on is refreshed at most once per interval, so that a burst of
   # API requests does not turn each read into a write
   LAST_USED_UPDATE_INTERVAL = 1.hour
 
@@ -41,12 +41,12 @@ class PersonalAccessToken < ApplicationRecord
 
   before_validation :generate_new_value, :on => :create
 
-  validates_presence_of :name, :hashed_value, :expires_at
+  validates_presence_of :name, :hashed_value, :expires_on
   validates_length_of :name, :maximum => 60
   validates_uniqueness_of :hashed_value, :case_sensitive => true
   validate :validate_expiration, :on => :create
 
-  scope :active, lambda {where(:revoked_at => nil).where("#{table_name}.expires_at > ?", Time.now)}
+  scope :active, lambda {where(:revoked_on => nil).where("#{table_name}.expires_on > ?", Time.now)}
 
   # Returns the active user owning the given value, or nil
   def self.find_active_user(value)
@@ -82,11 +82,11 @@ class PersonalAccessToken < ApplicationRecord
   end
 
   def expired?
-    expires_at.nil? || expires_at <= Time.now
+    expires_on.nil? || expires_on <= Time.now
   end
 
   def revoked?
-    revoked_at.present?
+    revoked_on.present?
   end
 
   def active?
@@ -94,15 +94,15 @@ class PersonalAccessToken < ApplicationRecord
   end
 
   def revoke!
-    update!(:revoked_at => Time.now) unless revoked?
+    update!(:revoked_on => Time.now) unless revoked?
     self
   end
 
   # Records that the token was used, at most once per LAST_USED_UPDATE_INTERVAL
   def record_usage(time=Time.now)
-    return if last_used_at && last_used_at > time - LAST_USED_UPDATE_INTERVAL
+    return if last_used_on && last_used_on > time - LAST_USED_UPDATE_INTERVAL
 
-    update_column(:last_used_at, time)
+    update_column(:last_used_on, time)
   end
 
   def to_s
@@ -118,8 +118,8 @@ class PersonalAccessToken < ApplicationRecord
 
   # An expiration date is mandatory and can only be set in the future
   def validate_expiration
-    if expires_at.present? && expires_at <= Time.now
-      errors.add(:expires_at, :invalid)
+    if expires_on.present? && expires_on <= Time.now
+      errors.add(:expires_on, :invalid)
     end
   end
 end

@@ -27,7 +27,7 @@ class PersonalAccessTokenTest < ActiveSupport::TestCase
 
   def generate_token(attributes={})
     PersonalAccessToken.create!(
-      {:user => @user, :name => 'Test token', :expires_at => 30.days.from_now}.merge(attributes)
+      {:user => @user, :name => 'Test token', :expires_on => 30.days.from_now}.merge(attributes)
     )
   end
 
@@ -56,7 +56,7 @@ class PersonalAccessTokenTest < ActiveSupport::TestCase
   end
 
   def test_should_validate_presence_of_name
-    token = PersonalAccessToken.new(:user => @user, :expires_at => 1.day.from_now)
+    token = PersonalAccessToken.new(:user => @user, :expires_on => 1.day.from_now)
     assert !token.save
     assert_includes token.errors.attribute_names, :name
   end
@@ -64,7 +64,7 @@ class PersonalAccessTokenTest < ActiveSupport::TestCase
   def test_should_validate_uniqueness_of_hashed_value
     existing = generate_token
     PersonalAccessToken.stubs(:generate_value).returns(existing.plain_value)
-    token = PersonalAccessToken.new(:user => @user, :name => 'Dup', :expires_at => 1.day.from_now)
+    token = PersonalAccessToken.new(:user => @user, :name => 'Dup', :expires_on => 1.day.from_now)
     assert !token.save
     assert_includes token.errors.attribute_names, :hashed_value
   end
@@ -72,17 +72,17 @@ class PersonalAccessTokenTest < ActiveSupport::TestCase
   def test_should_require_an_expiration_date
     token = PersonalAccessToken.new(:user => @user, :name => 'No expiry')
     assert !token.save
-    assert_includes token.errors.attribute_names, :expires_at
+    assert_includes token.errors.attribute_names, :expires_on
   end
 
   def test_should_not_accept_an_expiration_date_in_the_past
-    token = PersonalAccessToken.new(:user => @user, :name => 'Stale', :expires_at => 1.minute.ago)
+    token = PersonalAccessToken.new(:user => @user, :name => 'Stale', :expires_on => 1.minute.ago)
     assert !token.save
-    assert_includes token.errors.attribute_names, :expires_at
+    assert_includes token.errors.attribute_names, :expires_on
   end
 
   def test_expired_should_return_true_after_the_expiration_date
-    token = generate_token(:expires_at => 1.hour.from_now)
+    token = generate_token(:expires_on => 1.hour.from_now)
     assert !token.expired?
     assert token.active?
 
@@ -106,7 +106,7 @@ class PersonalAccessTokenTest < ActiveSupport::TestCase
     active = generate_token
     revoked = generate_token.revoke!
     expired = generate_token
-    expired.update_column(:expires_at, 1.hour.ago)
+    expired.update_column(:expires_on, 1.hour.ago)
 
     assert_equal [active.id], PersonalAccessToken.active.ids & [active.id, revoked.id, expired.id]
   end
@@ -131,7 +131,7 @@ class PersonalAccessTokenTest < ActiveSupport::TestCase
 
   def test_find_active_user_should_return_nil_for_an_expired_token
     token = generate_token
-    token.update_column(:expires_at, 1.minute.ago)
+    token.update_column(:expires_on, 1.minute.ago)
     assert_nil PersonalAccessToken.find_active_user(token.plain_value)
   end
 
@@ -149,24 +149,24 @@ class PersonalAccessTokenTest < ActiveSupport::TestCase
 
   def test_find_active_user_should_record_the_usage
     token = generate_token
-    assert_nil token.last_used_at
+    assert_nil token.last_used_on
 
     PersonalAccessToken.find_active_user(token.plain_value)
-    assert_not_nil token.reload.last_used_at
+    assert_not_nil token.reload.last_used_on
   end
 
   def test_record_usage_should_not_write_more_than_once_per_interval
     token = generate_token
     token.record_usage
-    first_use = token.reload.last_used_at
+    first_use = token.reload.last_used_on
     assert_not_nil first_use
 
     token.record_usage
-    assert_equal first_use.to_i, token.reload.last_used_at.to_i
+    assert_equal first_use.to_i, token.reload.last_used_on.to_i
 
     travel_to(PersonalAccessToken::LAST_USED_UPDATE_INTERVAL.from_now + 1.minute) do
       token.record_usage
-      assert token.reload.last_used_at > first_use
+      assert token.reload.last_used_on > first_use
     end
   end
 

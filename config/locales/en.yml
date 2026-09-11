@@ -431,8 +431,8 @@ en:
   field_last_activity_date: Last activity
   field_thousands_delimiter: Thousands delimiter
   field_ratio_interval: Ratio interval
-  field_expires_at: Expires
-  field_last_used_at: Last used
+  field_expires_on: Expires
+  field_last_used_on: Last used
 
   setting_app_title: Application title
   setting_welcome_text: Welcome text

@@ -28,7 +28,7 @@ class Redmine::ApiTest::AuthenticationTest < Redmine::ApiTest::Base
     PersonalAccessToken.create!(
       :user => user || User.generate!,
       :name => 'API test',
-      :expires_at => 30.days.from_now
+      :expires_on => 30.days.from_now
     )
   end
 
@@ -125,7 +125,7 @@ class Redmine::ApiTest::AuthenticationTest < Redmine::ApiTest::Base
 
   def test_api_should_deny_auth_using_expired_personal_access_token
     token = generate_personal_access_token
-    token.update_column(:expires_at, 1.minute.ago)
+    token.update_column(:expires_on, 1.minute.ago)
     get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
     assert_response :unauthorized
   end
@@ -199,11 +199,11 @@ class Redmine::ApiTest::AuthenticationTest < Redmine::ApiTest::Base
 
   def test_api_should_record_the_usage_of_the_personal_access_token
     token = generate_personal_access_token
-    assert_nil token.last_used_at
+    assert_nil token.last_used_on
 
     get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
     assert_response :ok
-    assert_not_nil token.reload.last_used_at
+    assert_not_nil token.reload.last_used_on
   end
 
   def test_api_should_trigger_basic_http_auth_with_basic_authorization_header
@@ -323,7 +323,7 @@ class Redmine::ApiTest::AuthenticationTest < Redmine::ApiTest::Base
 
   def test_failed_auth_using_an_expired_personal_access_token_should_record_the_tried_token
     token = generate_personal_access_token
-    token.update_column(:expires_at, 1.minute.ago)
+    token.update_column(:expires_on, 1.minute.ago)
     assert_difference 'ApiAuthEvent.count', 1 do
       get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
       assert_response :unauthorized

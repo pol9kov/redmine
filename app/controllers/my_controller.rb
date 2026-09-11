@@ -237,6 +237,6 @@ class MyController < ApplicationController
   private
 
   def personal_access_token_params
-    params.require(:personal_access_token).permit(:name, :expires_at)
+    params.require(:personal_access_token).permit(:name, :expires_on)
   end
 end
