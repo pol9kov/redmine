@@ -143,6 +143,20 @@ class Redmine::ApiTest::AuthenticationTest < Redmine::ApiTest::Base
   # therefore behaves on an HTML request exactly as the API key already does.
   # What it must NOT do, and this is the property worth pinning, is open a
   # session: the credential authenticates one request and leaves no cookie.
+  def test_revoking_one_personal_access_token_should_leave_the_others_working
+    user = User.generate!
+    revoked = generate_personal_access_token(user)
+    kept = generate_personal_access_token(user)
+
+    revoked.revoke!
+
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => revoked.plain_value}
+    assert_response :unauthorized
+
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => kept.plain_value}
+    assert_response :ok
+  end
+
   def test_personal_access_token_should_authenticate_like_an_api_key_without_opening_a_session
     with_settings :login_required => '1' do
       token = generate_personal_access_token
