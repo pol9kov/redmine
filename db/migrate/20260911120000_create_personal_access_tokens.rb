@@ -5,7 +5,6 @@ class CreatePersonalAccessTokens < ActiveRecord::Migration[7.2]
       t.string :name, null: false
       t.string :hashed_value, limit: 64, null: false
       t.datetime :expires_on, null: false
-      t.datetime :last_used_on
       t.datetime :revoked_on
       t.timestamps null: false
     end

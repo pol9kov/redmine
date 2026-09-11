@@ -155,6 +155,18 @@ class PersonalAccessTokenTest < ActiveSupport::TestCase
     assert_not_nil token.reload.last_used_on
   end
 
+  def test_last_used_on_should_be_read_from_the_api_credential_usage_row
+    token = generate_token
+    assert_difference 'ApiCredentialUsage.count', 1 do
+      token.record_usage
+    end
+    usage = ApiCredentialUsage.last
+    assert_equal ApiCredentialUsage::PERSONAL_ACCESS_TOKEN, usage.credential_kind
+    assert_equal token.id, usage.credential_id
+    assert_equal usage.last_used_on.to_i, token.reload.last_used_on.to_i
+    assert_not_includes PersonalAccessToken.column_names, 'last_used_on'
+  end
+
   def test_record_usage_should_not_write_more_than_once_per_interval
     token = generate_token
     token.record_usage
@@ -164,7 +176,7 @@ class PersonalAccessTokenTest < ActiveSupport::TestCase
     token.record_usage
     assert_equal first_use.to_i, token.reload.last_used_on.to_i
 
-    travel_to(PersonalAccessToken::LAST_USED_UPDATE_INTERVAL.from_now + 1.minute) do
+    travel_to(ApiCredentialUsage::LAST_USED_UPDATE_INTERVAL.from_now + 1.minute) do
       token.record_usage
       assert token.reload.last_used_on > first_use
     end

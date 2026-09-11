@@ -891,6 +891,19 @@ class MyControllerTest < Redmine::ControllerTest
     assert_select "tr#personal-access-token-#{revoked.id} td.buttons a", 0
   end
 
+  def test_personal_access_tokens_should_show_the_last_used_marks_with_one_query
+    tokens = 3.times.map {|i| generate_personal_access_token(:name => "Token #{i}")}
+    tokens.each(&:record_usage)
+
+    # The marks live in their own table: preloaded, not one query per token
+    assert_queries_match(/api_credential_usages/, :count => 1) do
+      get :personal_access_tokens
+    end
+    assert_response :success
+    assert_select 'td.last_used_on', 3
+    assert_select 'td.last_used_on', :text => 'none', :count => 0
+  end
+
   def test_personal_access_tokens_should_not_list_tokens_of_other_users
     token = generate_personal_access_token(:user => User.find(3), :name => 'Not mine')
 

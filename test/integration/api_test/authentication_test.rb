@@ -206,6 +206,57 @@ class Redmine::ApiTest::AuthenticationTest < Redmine::ApiTest::Base
     assert_not_nil token.reload.last_used_on
   end
 
+  def test_api_should_record_the_usage_of_the_api_key
+    user = User.generate!
+    api_key = user.api_key
+
+    assert_difference 'ApiCredentialUsage.count', 1 do
+      get '/users/current.xml', :headers => {'X-Redmine-API-Key' => api_key}
+      assert_response :ok
+    end
+    usage = ApiCredentialUsage.last
+    assert_equal ApiCredentialUsage::API_KEY, usage.credential_kind
+    assert_equal user.api_token.id, usage.credential_id
+    assert_not_nil usage.last_used_on
+  end
+
+  def test_api_should_not_rewrite_the_mark_of_the_api_key_within_the_interval
+    user = User.generate!
+    api_key = user.api_key
+
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => api_key}
+    assert_response :ok
+    first_use = ApiCredentialUsage.last.last_used_on
+
+    assert_no_difference 'ApiCredentialUsage.count' do
+      get '/users/current.xml', :headers => {'X-Redmine-API-Key' => api_key}
+      assert_response :ok
+    end
+    assert_equal first_use.to_i, ApiCredentialUsage.last.last_used_on.to_i
+  end
+
+  def test_api_should_mark_only_the_credential_that_was_used
+    user = User.generate!
+    token = generate_personal_access_token(user)
+    api_key = user.api_key
+    api_key_id = user.api_token.id
+
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
+    assert_response :ok
+    assert_not_nil token.reload.last_used_on
+    assert_nil ApiCredentialUsage.find_by(
+      :credential_kind => ApiCredentialUsage::API_KEY, :credential_id => api_key_id
+    )
+
+    token_mark = token.last_used_on
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => api_key}
+    assert_response :ok
+    assert_not_nil ApiCredentialUsage.find_by(
+      :credential_kind => ApiCredentialUsage::API_KEY, :credential_id => api_key_id
+    )
+    assert_equal token_mark.to_i, token.reload.last_used_on.to_i
+  end
+
   def test_api_should_trigger_basic_http_auth_with_basic_authorization_header
     ApplicationController.any_instance.expects(:authenticate_with_http_basic).once
     get '/users/current.xml', :headers => credentials('jsmith')

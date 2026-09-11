@@ -557,8 +557,21 @@ class User < Principal
 
   # Returns the active user matching the given API credential, which is either
   # a personal access token or the user's API key
+  #
+  # The API key branch does not go through find_by_api_key, which hands back
+  # the user only: recording the usage needs the id of the Token row, and
+  # Token.find_token is where that row is already fetched, so the mark costs
+  # no extra read
   def self.find_by_api_credential(credential)
-    PersonalAccessToken.find_active_user(credential) || find_by_api_key(credential)
+    user = PersonalAccessToken.find_active_user(credential)
+    return user if user
+
+    token = Token.find_token('api', credential)
+    user = token&.user
+    return nil unless user&.active?
+
+    ApiCredentialUsage.record(ApiCredentialUsage::API_KEY, token.id)
+    user
   end
 
   # Makes find_by_mail case-insensitive

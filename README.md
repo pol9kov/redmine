@@ -33,12 +33,14 @@ each independently revocable, stored as a digest, with a mandatory lifetime and 
 | storage | plaintext `tokens.value` | SHA256 digest only |
 | expiry | none | mandatory, validated on create |
 | revocation | reset the single key | per token, independent |
-| usage visible | no | `last_used_on` |
+| usage visible | no | `last_used_on`, for the API key too |
 
 The old API key **keeps working unchanged**. `User.find_by_api_credential` tries a personal access
-token first and falls back to `find_by_api_key`, so every existing integration, and every existing
-test covering it, continues to pass untouched. This was a deliberate constraint: an authentication
-change that breaks existing clients is not shippable into a product with a decade of installed base.
+token first and falls back to the API key, so every existing integration, and every existing test
+covering it, continues to pass untouched — it only gains two things it never had, an audit trail
+row and a last-used mark, both of which are written beside it and not in the `tokens` table. This
+was a deliberate constraint: an authentication change that breaks existing clients is not shippable
+into a product with a decade of installed base.
 
 ### Files
 
@@ -51,6 +53,9 @@ app/controllers/application_controller.rb               2 call sites, key and HT
 app/models/api_auth_event.rb                            audit trail row
 db/migrate/20260911130000_create_api_auth_events.rb
 
+app/models/api_credential_usage.rb                      last-used mark, both credential kinds
+db/migrate/20260911140000_create_api_credential_usages.rb
+
 app/controllers/my_controller.rb                        list / create / revoke
 app/views/my/personal_access_tokens.html.erb            the page
 app/views/my/_sidebar.html.erb                          entry point, beside the API key
@@ -59,6 +64,7 @@ config/routes.rb  config/locales/en.yml
 
 test/unit/personal_access_token_test.rb
 test/unit/api_auth_event_test.rb
+test/unit/api_credential_usage_test.rb
 test/functional/my_controller_test.rb
 test/integration/api_test/authentication_test.rb
 test/integration/api_test/disabled_rest_api_test.rb
@@ -123,10 +129,28 @@ in the ticket (see below) and it is on purpose: after an incident the question a
 this credential do and when did we kill it", and a deleted row cannot answer. The row is also what
 lets `last_used_on` remain meaningful post-mortem.
 
-**`last_used_on` is throttled** to one write per hour per token (`LAST_USED_UPDATE_INTERVAL`).
-Without the throttle, every authenticated GET turns into a write — on a busy integration that is a
-row-level write amplification of the entire API. One-hour granularity is enough to answer the only
-question the field is for: is this token still in use, and roughly when did it stop.
+**Last used is a table, not a column.** `api_credential_usages` holds one row per credential —
+`(credential_kind, credential_id)`, unique by index, plus `last_used_on`. The reason it is not a
+column on `personal_access_tokens` is the old API key: *when was this credential last used* is the
+same fact for both kinds, and the API key is a row in the shared `tokens` table, which it lives in
+together with sessions, autologin, password recovery and feed keys. Giving the API key a
+`last_used_on` column means giving one to all of them and writing to that table on every session
+check — a much larger blast radius than the feature deserves. One narrow table off to the side
+gives both credential kinds the same home, adds nothing to `tokens`, and is the place a third
+credential kind would be marked without a new migration. The fact is written through one entry
+point, `ApiCredentialUsage.record(kind, id)`: the legacy key is marked in
+`User.find_by_api_credential`, from the `Token` row `Token.find_token` has already fetched, so
+nothing looks the credential up twice. The price of the separate table is named honestly: one
+indexed read of the mark per authenticated request, against a column read that used to come free
+with the token row, and a write at most once an hour.
+
+**The mark is throttled** to one write per hour per credential
+(`ApiCredentialUsage::LAST_USED_UPDATE_INTERVAL`, which lives there and nowhere else). Without the
+throttle, every authenticated GET turns into a write — on a busy integration that is a row-level
+write amplification of the entire API. One-hour granularity is enough to answer the only question
+the field is for: is this credential still in use, and roughly when did it stop. The token list in
+*My account* preloads the marks (`includes(:usage)`), so the page reads them in one query however
+many tokens a user owns.
 
 ### Audit logging
 
@@ -161,7 +185,7 @@ growing tables.
 ## 4. Prior art, and where this diverges
 
 **This must be said plainly: a patch implementing this same pillar already exists in the ticket**
-(comment #11, `personal-access-tokens-43881.patch`, by Bogdan Egikov). It was read as prior art
+(comment #11, `personal-access-tokens-43881.patch`, attachment 36640, by Bogdan Egikov). It was read as prior art
 after the model here was written, and there is real convergence — the `rmpat_` prefix, digest-only
 storage and the one-hour last-used throttle appear in both. Those are the choices the problem
 pushes you toward, and pretending otherwise by renaming things would be cosmetics.
@@ -172,6 +196,7 @@ Where this branch deliberately differs:
 |---|---|---|---|
 | revocation | `destroy` — row deleted | `revoked_on` — row kept | a deleted credential cannot be investigated |
 | expiry precision | `expires_on` is a `date` | `expires_on` is a `datetime` | "expires at end of day in whose timezone" is a question with no good answer on an API credential |
+| last used | `last_used_on` column on the token | `api_credential_usages` row, keyed by kind + id | the same fact is needed for the legacy API key, which cannot get a column without one landing on sessions and autologin too (see §3) |
 | scope of the patch | PAT + scopes + audit log in one | PAT only | the maintainer (Holger Just, comment #12) asked precisely for the opposite: *"each of the features proposed here are rather large and complex on its own… we should try to separate these features into separate issues"* |
 
 The third row is the important one. That patch was reviewed and the review said: too large, split it.
@@ -290,8 +315,8 @@ curl -s -o /dev/null -w '%{http_code}\n' -u "$TOKEN:x"  localhost:3000/users/cur
 - A token grants **the user's full permissions**. Until scopes land, a personal access token is
   exactly as powerful as the password, minus the web session. It is an improvement in *blast radius
   over time* (revocable, expiring, per-integration) and not yet in *blast radius per request*.
-- `last_used_on` is throttled to an hour, so it answers "is this alive", not "when exactly was the
-  last call". It is not an audit log and should not be read as one.
+- The last-used mark is throttled to an hour, so it answers "is this alive", not "when exactly was
+  the last call". It is not an audit log and should not be read as one.
 - **A `key=` credential is not API-format-only, and that surprised me.** `find_current_user` gates
   the credential branch on `Setting.rest_api_enabled? && accept_api_auth?` — on the *action*, not on
   `api_request?` — so `GET /issues?key=…` authenticates over plain HTML too. That is pre-existing

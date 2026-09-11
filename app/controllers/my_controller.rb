@@ -152,7 +152,10 @@ class MyController < ApplicationController
   # Lists the personal access tokens of the user
   def personal_access_tokens
     @personal_access_token ||= User.current.personal_access_tokens.new
-    @personal_access_tokens = User.current.personal_access_tokens.order(:created_at => :desc).to_a
+    # The last-used marks live in their own table: preloaded here so that the
+    # list costs one query for them instead of one per token
+    @personal_access_tokens =
+      User.current.personal_access_tokens.includes(:usage).order(:created_at => :desc).to_a
   end
 
   # Creates a personal access token

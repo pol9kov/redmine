@@ -30,11 +30,14 @@ class PersonalAccessToken < ApplicationRecord
   PREFIX = 'rmpat_'
   VALUE_FORMAT = /\A#{PREFIX}[0-9a-f]{40}\z/
 
-  # last_used_on is refreshed at most once per interval, so that a burst of
-  # API requests does not turn each read into a write
-  LAST_USED_UPDATE_INTERVAL = 1.hour
-
   belongs_to :user
+
+  # When the token was last used is not a column here: the same fact is kept
+  # for the legacy API key too, in one narrow table (see ApiCredentialUsage)
+  has_one :usage,
+          lambda {where(:credential_kind => ApiCredentialUsage::PERSONAL_ACCESS_TOKEN)},
+          :class_name => 'ApiCredentialUsage', :foreign_key => :credential_id,
+          :inverse_of => false
 
   # The value, available only on the instance that generated it
   attr_reader :plain_value
@@ -98,11 +101,17 @@ class PersonalAccessToken < ApplicationRecord
     self
   end
 
-  # Records that the token was used, at most once per LAST_USED_UPDATE_INTERVAL
-  def record_usage(time=Time.now)
-    return if last_used_on && last_used_on > time - LAST_USED_UPDATE_INTERVAL
+  # When the token was last used, or nil if it never was
+  def last_used_on
+    usage&.last_used_on
+  end
 
-    update_column(:last_used_on, time)
+  # Records that the token was used, at most once per
+  # ApiCredentialUsage::LAST_USED_UPDATE_INTERVAL
+  def record_usage(time=Time.now)
+    ApiCredentialUsage.record(ApiCredentialUsage::PERSONAL_ACCESS_TOKEN, id, time)
+    association(:usage).reset
+    self
   end
 
   def to_s

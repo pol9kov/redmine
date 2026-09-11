@@ -26,7 +26,10 @@
 # outlives the user and token it points to: an audit trail that is erased
 # together with the account it describes is not an audit trail.
 class ApiAuthEvent < ApplicationRecord
-  CREDENTIAL_KINDS = %w(personal_access_token api_key failed)
+  # A failed attempt names no credential; the two real kinds are named once,
+  # in ApiCredentialUsage, the other table keyed by them
+  FAILED = 'failed'
+  CREDENTIAL_KINDS = (ApiCredentialUsage::KINDS + [FAILED]).freeze
 
   belongs_to :user, :optional => true
   belongs_to :personal_access_token, :optional => true
@@ -40,11 +43,11 @@ class ApiAuthEvent < ApplicationRecord
   def self.record(request, user: nil, personal_access_token: nil)
     credential_kind =
       if user.nil?
-        'failed'
+        FAILED
       elsif personal_access_token
-        'personal_access_token'
+        ApiCredentialUsage::PERSONAL_ACCESS_TOKEN
       else
-        'api_key'
+        ApiCredentialUsage::API_KEY
       end
     create!(
       :credential_kind => credential_kind,
