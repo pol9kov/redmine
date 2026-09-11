@@ -192,8 +192,13 @@ The write is synchronous, one insert per authenticated API request, and wrapped 
 DB error fails loud in the log but never turns into a client-facing 500 (`ApiAuthEvent.record`
 rescues everything; asserted by test). At the scale where that insert matters, the path out is
 buffering — an async insert or an append-only log file — behind the same `ApiAuthEvent.record`
-interface. Retention and pruning are deliberately out of scope, same as for Redmine's other
-growing tables.
+interface. Retention is out of scope for this branch, but it is not nowhere: Redmine already ships
+a prune namespace for its growing tables (`redmine:attachments:prune`, `redmine:tokens:prune`,
+`redmine:users:prune`, `redmine:watchers:prune` in `lib/tasks/redmine.rake`), and a prune for
+`api_auth_events` belongs there — a retention window is a policy an operator sets, not a constant
+this patch picks. That prunability is also the reason `last_used_on` does not derive from this
+table (a `MAX(created_at)` per credential answers the same question): a required feature must not
+rest on rows an operator is expected to delete.
 
 ## 4. Prior art, and where this diverges
 
