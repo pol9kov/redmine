@@ -47,9 +47,41 @@ app/models/personal_access_token.rb                     the model
 db/migrate/20260911120000_create_personal_access_tokens.rb
 app/models/user.rb                                      has_many + find_by_api_credential
 app/controllers/application_controller.rb               2 call sites, key and HTTP-Basic
+
+app/controllers/my_controller.rb                        list / create / revoke
+app/views/my/personal_access_tokens.html.erb            the page
+app/views/my/_sidebar.html.erb                          entry point, beside the API key
+app/helpers/my_helper.rb                                expiry choices, state label
+config/routes.rb  config/locales/en.yml
+
 test/unit/personal_access_token_test.rb
-test/integration/api_test/authentication_test.rb        added cases
+test/functional/my_controller_test.rb
+test/integration/api_test/authentication_test.rb
+test/integration/api_test/disabled_rest_api_test.rb
+test/integration/routing/my_test.rb
 ```
+
+### The management page
+
+*My account → Personal access tokens* (`/my/personal_access_tokens`), reached from the same
+sidebar block as the API key and hidden by the same `Setting.rest_api_enabled?` condition — a
+personal access token is only ever consumed by the REST path, so it has no meaning when that path
+is off.
+
+Three decisions there are worth naming:
+
+- **The new value is rendered, not flashed.** Doorkeeper — vendored in Redmine — shows a freshly
+  created client secret by putting it in `flash[:application_secret]` and redirecting. Copying that
+  would write the secret into the session cookie. `create_personal_access_token` renders the list
+  template directly instead, so the plaintext exists in exactly one response body and nowhere else.
+  The cost is that a successful create answers 200 rather than 302.
+- **Creating and revoking are behind sudo mode**, like `reset_api_key` and `show_api_key` already
+  are. Minting a credential is strictly more dangerous than displaying one. Listing is *not* gated:
+  it shows no secret, and a password prompt in front of merely looking at a page is friction with
+  nothing bought.
+- **Every lookup goes through `User.current.personal_access_tokens`**, so another user's token is
+  not reachable by id — it is a 404, not an authorization check that someone can later forget to
+  write. Asserted by test.
 
 ## 3. How it works
 

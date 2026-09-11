@@ -179,6 +179,8 @@ en:
   notice_email_error: "An error occurred while sending mail (%{value})"
   notice_feeds_access_key_reseted: Your Atom access key was reset.
   notice_api_access_key_reseted: Your API access key was reset.
+  notice_personal_access_token_created: The personal access token was created.
+  notice_personal_access_token_revoked: The personal access token was revoked.
   notice_failed_to_save_issues: "Failed to save %{count} issue(s) on %{total} selected: %{ids}."
   notice_failed_to_save_time_entries: "Failed to save %{count} time entrie(s) on %{total} selected: %{ids}."
   notice_failed_to_save_members: "Failed to save member(s): %{errors}."
@@ -429,6 +431,8 @@ en:
   field_last_activity_date: Last activity
   field_thousands_delimiter: Thousands delimiter
   field_ratio_interval: Ratio interval
+  field_expires_at: Expires
+  field_last_used_at: Last used
 
   setting_app_title: Application title
   setting_welcome_text: Welcome text
@@ -848,6 +852,10 @@ en:
   label_has_never_been: has never been
   label_changed_from: changed from
   label_day_plural: days
+  label_x_days:
+    zero:  0 days
+    one:   1 day
+    other: "%{count} days"
   label_repository: Repository
   label_repository_new: New repository
   label_repository_plural: Repositories
@@ -1030,6 +1038,15 @@ en:
   label_api_access_key: API access key
   label_missing_api_access_key: Missing an API access key
   label_api_access_key_created_on: "API access key created %{value} ago"
+  label_personal_access_token_new: New personal access token
+  label_personal_access_token_plural: Personal access tokens
+  label_personal_access_token_status_active: Active
+  label_personal_access_token_status_expired: Expired
+  label_personal_access_token_status_revoked: Revoked
+  label_x_active_personal_access_tokens:
+    zero:  No active personal access token
+    one:   1 active personal access token
+    other: "%{count} active personal access tokens"
   label_profile: Profile
   label_subtask: Subtask
   label_subtask_plural: Subtasks
@@ -1243,6 +1260,7 @@ en:
   button_delete_object: "Delete %{object_name}"
   button_create_and_follow: Create and follow
   button_apply_issues_filter: Apply issues filter
+  button_revoke: Revoke
 
   status_active: active
   status_registered: registered
@@ -1367,6 +1385,9 @@ en:
   text_oauth_copy_secret_now: Copy the secret to a safe place now, it will not be shown again.
   text_oauth_implicit_permissions: View your name, login and primary email address
   text_oauth_info_scopes: Select the scopes this application may request. The application will not be allowed to do more than what is selected here. It will also always be limited by the roles and project memberships of the user who authorized it.
+  text_personal_access_token_copy_now: Copy this token to a safe place now, it will not be shown again.
+  text_personal_access_token_info: A personal access token can be used instead of your API access key to access the REST API. Unlike the API access key, it expires, it can be revoked at any time and you may have several of them.
+  text_personal_access_token_revoke_confirmation: Applications using this token will no longer be able to access the API. Are you sure?
 
   default_role_manager: Manager
   default_role_developer: Developer

@@ -27,6 +27,7 @@ class MyController < ApplicationController
 
   require_sudo_mode :account, only: :put
   require_sudo_mode :reset_atom_key, :reset_api_key, :show_api_key, :destroy
+  require_sudo_mode :create_personal_access_token, :revoke_personal_access_token
 
   helper :issues
   helper :users
@@ -148,6 +149,40 @@ class MyController < ApplicationController
     redirect_to my_account_path
   end
 
+  # Lists the personal access tokens of the user
+  def personal_access_tokens
+    @personal_access_token ||= User.current.personal_access_tokens.new
+    @personal_access_tokens = User.current.personal_access_tokens.order(:created_at => :desc).to_a
+  end
+
+  # Creates a personal access token
+  #
+  # The page is rendered instead of redirected to, because the value of the new
+  # token is displayed there and is not recoverable: the database holds its
+  # digest only, and keeping the value in the flash would store it in the
+  # session cookie
+  def create_personal_access_token
+    token = User.current.personal_access_tokens.new(personal_access_token_params)
+    if token.save
+      @created_personal_access_token = token
+      flash.now[:notice] = l(:notice_personal_access_token_created)
+    else
+      @personal_access_token = token
+    end
+    personal_access_tokens
+    render :action => 'personal_access_tokens'
+  end
+
+  # Revokes one of the personal access tokens of the user
+  def revoke_personal_access_token
+    token = User.current.personal_access_tokens.find(params[:id])
+    token.revoke!
+    flash[:notice] = l(:notice_personal_access_token_revoked)
+    redirect_to my_personal_access_tokens_path
+  rescue ActiveRecord::RecordNotFound
+    render_404
+  end
+
   def update_page
     @user = User.current
     block_settings = params[:settings] || {}
@@ -197,5 +232,11 @@ class MyController < ApplicationController
     @user.pref.order_blocks params[:group], params[:blocks]
     @user.pref.save
     head :ok
+  end
+
+  private
+
+  def personal_access_token_params
+    params.require(:personal_access_token).permit(:name, :expires_at)
   end
 end
