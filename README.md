@@ -141,7 +141,10 @@ together with sessions, autologin, password recovery and feed keys. Giving the A
 `last_used_on` column means giving one to all of them and writing to that table on every session
 check — a much larger blast radius than the feature deserves. One narrow table off to the side
 gives both credential kinds the same home, adds nothing to `tokens`, and is the place a third
-credential kind would be marked without a new migration. The fact is written through one entry
+credential kind would be marked without a new migration. The mark deliberately does **not** derive
+from `api_auth_events` (a `MAX(created_at)` per credential would give the same answer): audit
+logging is an optional pillar of this ticket and is explicitly prunable, and a required feature
+must not rest on an optional one. The fact is written through one entry
 point, `ApiCredentialUsage.record(kind, id)`: the legacy key is marked in
 `User.find_by_api_credential`, from the `Token` row `Token.find_token` has already fetched, so
 nothing looks the credential up twice. The price of the separate table is named honestly: one
