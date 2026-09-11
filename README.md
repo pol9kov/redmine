@@ -124,6 +124,10 @@ that closes a timing channel — it is cheap and it makes the intent explicit fo
 token is created. There is deliberately no "never expires" option: making the safe choice the only
 choice is why this feature is worth having over the existing API key.
 
+**The name is unique within its owner** — by validation and by a unique `[user_id, name]` index —
+because the name is the only thing a person has to tell one token from another when deciding which
+to revoke; two users naming a token the same way is of course fine.
+
 **Revocation is soft.** `revoked_on` is set, the row stays. This is a divergence from the prior art
 in the ticket (see below) and it is on purpose: after an incident the question asked is "what did
 this credential do and when did we kill it", and a deleted row cannot answer. The row is also what

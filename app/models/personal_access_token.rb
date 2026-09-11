@@ -45,7 +45,11 @@ class PersonalAccessToken < ApplicationRecord
   before_validation :generate_new_value, :on => :create
 
   validates_presence_of :name, :hashed_value, :expires_on
-  validates_length_of :name, :maximum => 60
+  # The name is what its owner recognizes a token by when deciding which one to
+  # revoke, so two of them within one user would make that choice ambiguous.
+  # Its length is the column's own, declared once in the migration.
+  validates_length_of :name, :maximum => proc {columns_hash['name'].limit}
+  validates_uniqueness_of :name, :scope => :user_id, :case_sensitive => true
   validates_uniqueness_of :hashed_value, :case_sensitive => true
   validate :validate_expiration, :on => :create
 

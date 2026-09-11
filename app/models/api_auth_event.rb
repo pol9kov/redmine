@@ -55,8 +55,10 @@ class ApiAuthEvent < ApplicationRecord
       :personal_access_token => personal_access_token,
       :http_method => request.request_method,
       # request.path carries no query string, so a credential passed as
-      # ?key=... can never end up in the audit table
-      :path => request.path.to_s[0, 255],
+      # ?key=... can never end up in the audit table. A path longer than the
+      # column is cut to what the column takes, whose width is the migration's
+      # to state.
+      :path => request.path.to_s[0, columns_hash['path'].limit],
       :remote_ip => request.remote_ip
     )
   rescue StandardError => e

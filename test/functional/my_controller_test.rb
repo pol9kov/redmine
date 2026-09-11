@@ -1002,6 +1002,40 @@ class MyControllerTest < Redmine::ControllerTest
     assert_select '#new-personal-access-token', 0
   end
 
+  def test_create_personal_access_token_with_a_name_already_used
+    generate_personal_access_token(:name => 'Laptop')
+
+    assert_no_difference 'PersonalAccessToken.count' do
+      post(
+        :create_personal_access_token,
+        :params => {
+          :personal_access_token => {
+            :name => 'Laptop', :expires_on => 30.days.from_now.iso8601
+          }
+        }
+      )
+    end
+    assert_response :success
+    assert_select_error /Name has already been taken/
+    assert_select '#new-personal-access-token', 0
+  end
+
+  def test_create_personal_access_token_with_a_name_of_another_user_should_be_accepted
+    generate_personal_access_token(:user => User.find(3), :name => 'Laptop')
+
+    assert_difference 'PersonalAccessToken.count' do
+      post(
+        :create_personal_access_token,
+        :params => {
+          :personal_access_token => {
+            :name => 'Laptop', :expires_on => 30.days.from_now.iso8601
+          }
+        }
+      )
+    end
+    assert_response :success
+  end
+
   def test_create_personal_access_token_with_expiration_in_the_past
     assert_no_difference 'PersonalAccessToken.count' do
       post(

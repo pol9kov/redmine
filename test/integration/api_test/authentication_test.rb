@@ -24,10 +24,12 @@ class Redmine::ApiTest::AuthenticationTest < Redmine::ApiTest::Base
     User.current = nil
   end
 
+  # Names are unique within a user, so each one carries a counter
   def generate_personal_access_token(user=nil)
+    @token_seq = @token_seq.to_i + 1
     PersonalAccessToken.create!(
       :user => user || User.generate!,
-      :name => 'API test',
+      :name => "API test #{@token_seq}",
       :expires_on => 30.days.from_now
     )
   end

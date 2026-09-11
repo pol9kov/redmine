@@ -25,9 +25,12 @@ class PersonalAccessTokenTest < ActiveSupport::TestCase
     @user = User.find(2)
   end
 
+  # Names are unique within a user, so the default one carries a counter
   def generate_token(attributes={})
+    @token_seq = @token_seq.to_i + 1
     PersonalAccessToken.create!(
-      {:user => @user, :name => 'Test token', :expires_on => 30.days.from_now}.merge(attributes)
+      {:user => @user, :name => "Test token #{@token_seq}",
+       :expires_on => 30.days.from_now}.merge(attributes)
     )
   end
 
@@ -57,6 +60,30 @@ class PersonalAccessTokenTest < ActiveSupport::TestCase
 
   def test_should_validate_presence_of_name
     token = PersonalAccessToken.new(:user => @user, :expires_on => 1.day.from_now)
+    assert !token.save
+    assert_includes token.errors.attribute_names, :name
+  end
+
+  def test_should_validate_uniqueness_of_name_within_the_user
+    generate_token(:name => 'CI server')
+    token = PersonalAccessToken.new(:user => @user, :name => 'CI server', :expires_on => 1.day.from_now)
+    assert !token.save
+    assert_includes token.errors.attribute_names, :name
+  end
+
+  def test_two_users_may_own_a_token_with_the_same_name
+    generate_token(:name => 'CI server')
+    token = PersonalAccessToken.new(:user => User.find(3), :name => 'CI server', :expires_on => 1.day.from_now)
+    assert token.save
+  end
+
+  def test_should_accept_a_name_as_long_as_the_column_and_reject_a_longer_one
+    limit = PersonalAccessToken.columns_hash['name'].limit
+    assert_equal 255, limit
+
+    assert generate_token(:name => 'a' * limit).persisted?
+
+    token = PersonalAccessToken.new(:user => @user, :name => 'a' * (limit + 1), :expires_on => 1.day.from_now)
     assert !token.save
     assert_includes token.errors.attribute_names, :name
   end
