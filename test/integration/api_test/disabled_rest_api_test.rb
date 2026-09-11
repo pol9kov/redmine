@@ -91,4 +91,21 @@ class Redmine::ApiTest::DisabledRestApiTest < Redmine::ApiTest::Base
     get "/news.json", :headers => credentials(@token.value, 'X')
     assert_response :forbidden
   end
+
+  def test_disabled_rest_api_should_not_record_audit_events
+    @user = User.generate!
+    @token =
+      PersonalAccessToken.create!(
+        :user => @user, :name => 'API test', :expires_at => 30.days.from_now
+      )
+    @key = Token.create!(:user => @user, :action => 'api')
+
+    assert_no_difference 'ApiAuthEvent.count' do
+      get "/news.xml?key=#{@token.plain_value}"
+      assert_response :forbidden
+
+      get "/news.xml?key=#{@key.value}"
+      assert_response :forbidden
+    end
+  end
 end

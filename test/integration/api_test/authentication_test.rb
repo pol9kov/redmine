@@ -256,4 +256,84 @@ class Redmine::ApiTest::AuthenticationTest < Redmine::ApiTest::Base
     assert_response :success
     assert_select 'h2', :text => "#{user.initials} #{user.name}"
   end
+
+  def test_successful_personal_access_token_auth_should_record_an_audit_event
+    token = generate_personal_access_token
+    assert_difference 'ApiAuthEvent.count', 1 do
+      get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
+      assert_response :ok
+    end
+    event = ApiAuthEvent.last
+    assert_equal 'personal_access_token', event.credential_kind
+    assert_equal token.user_id, event.user_id
+    assert_equal token.id, event.personal_access_token_id
+    assert_equal 'GET', event.http_method
+    assert_equal '/users/current.xml', event.path
+    assert event.remote_ip.present?
+  end
+
+  def test_successful_api_key_auth_should_record_an_audit_event
+    user = User.generate!
+    token = Token.create!(:user => user, :action => 'api')
+    assert_difference 'ApiAuthEvent.count', 1 do
+      get "/users/current.xml?key=#{token.value}"
+      assert_response :ok
+    end
+    event = ApiAuthEvent.last
+    assert_equal 'api_key', event.credential_kind
+    assert_equal user.id, event.user_id
+    assert_nil event.personal_access_token_id
+    # the path is stored without the query string, so the key stays out of the trail
+    assert_equal '/users/current.xml', event.path
+  end
+
+  def test_successful_http_basic_auth_using_personal_access_token_should_record_an_audit_event
+    token = generate_personal_access_token
+    assert_difference 'ApiAuthEvent.count', 1 do
+      get '/users/current.xml', :headers => credentials(token.plain_value, 'X')
+      assert_response :ok
+    end
+    assert_equal 'personal_access_token', ApiAuthEvent.last.credential_kind
+  end
+
+  def test_failed_api_credential_should_record_a_failed_audit_event
+    assert_difference 'ApiAuthEvent.count', 1 do
+      get '/users/current.xml', :headers => {'X-Redmine-API-Key' => 'invalid-key'}
+      assert_response :unauthorized
+    end
+    event = ApiAuthEvent.last
+    assert_equal 'failed', event.credential_kind
+    assert_nil event.user_id
+    assert_nil event.personal_access_token_id
+  end
+
+  def test_failed_auth_using_an_expired_personal_access_token_should_record_the_tried_token
+    token = generate_personal_access_token
+    token.update_column(:expires_at, 1.minute.ago)
+    assert_difference 'ApiAuthEvent.count', 1 do
+      get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
+      assert_response :unauthorized
+    end
+    event = ApiAuthEvent.last
+    assert_equal 'failed', event.credential_kind
+    assert_nil event.user_id
+    assert_equal token.id, event.personal_access_token_id
+  end
+
+  def test_http_basic_auth_using_username_and_password_should_not_record_an_audit_event
+    user = User.generate! do |u|
+      u.password = 'my_password'
+    end
+    assert_no_difference 'ApiAuthEvent.count' do
+      get '/users/current.xml', :headers => credentials(user.login, 'my_password')
+      assert_response :ok
+    end
+  end
+
+  def test_audit_write_failure_should_not_break_authentication
+    token = generate_personal_access_token
+    ApiAuthEvent.stubs(:create!).raises(ActiveRecord::StatementInvalid.new('audit table gone'))
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
+    assert_response :ok
+  end
 end

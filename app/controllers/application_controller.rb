@@ -130,7 +130,7 @@ class ApplicationController < ActionController::Base
     if user.nil? && Setting.rest_api_enabled? && accept_api_auth?
       if (key = api_key_from_request)
         # Use personal access token or API key
-        user = User.find_by_api_credential(key)
+        user = find_user_by_api_credential(key)
       elsif access_token = Doorkeeper.authenticate(request)
         # Oauth
         if access_token.accessible?
@@ -149,7 +149,7 @@ class ApplicationController < ActionController::Base
             return
           end
 
-          user ||= User.find_by_api_credential(username)
+          user ||= find_user_by_api_credential(username)
         end
         if user && user.must_change_password?
           render_error :message => 'You must change your password', :status => 403
@@ -731,6 +731,27 @@ class ApplicationController < ActionController::Base
     elsif request.headers["X-Redmine-API-Key"].present?
       request.headers["X-Redmine-API-Key"].to_s
     end
+  end
+
+  # Resolves an API credential through User.find_by_api_credential and leaves
+  # an audit trail row for the attempt (see ApiAuthEvent). The hook lives
+  # here, at the single seam both credential kinds pass through, because this
+  # is where the request context (path, method, remote IP) exists — pushing
+  # the audit down into the model would leak controller concerns into a pure
+  # lookup.
+  #
+  # Which kind matched is re-derived with a second lookup instead of widening
+  # User.find_by_api_credential's return value: the prefix check inside
+  # find_by_value makes it free for API keys (no query), so the extra cost is
+  # one indexed read on personal access token traffic only, and the seam
+  # keeps returning a plain User. On a failed attempt the tried token, when
+  # it exists (expired or revoked), is recorded too — after an incident the
+  # question is precisely "who is still sending the credential we killed".
+  def find_user_by_api_credential(credential)
+    user = User.find_by_api_credential(credential)
+    token = PersonalAccessToken.find_by_value(credential)
+    ApiAuthEvent.record(request, :user => user, :personal_access_token => token)
+    user
   end
 
   # Returns the API 'switch user' value if present

@@ -48,6 +48,9 @@ db/migrate/20260911120000_create_personal_access_tokens.rb
 app/models/user.rb                                      has_many + find_by_api_credential
 app/controllers/application_controller.rb               2 call sites, key and HTTP-Basic
 
+app/models/api_auth_event.rb                            audit trail row
+db/migrate/20260911130000_create_api_auth_events.rb
+
 app/controllers/my_controller.rb                        list / create / revoke
 app/views/my/personal_access_tokens.html.erb            the page
 app/views/my/_sidebar.html.erb                          entry point, beside the API key
@@ -55,6 +58,7 @@ app/helpers/my_helper.rb                                expiry choices, state la
 config/routes.rb  config/locales/en.yml
 
 test/unit/personal_access_token_test.rb
+test/unit/api_auth_event_test.rb
 test/functional/my_controller_test.rb
 test/integration/api_test/authentication_test.rb
 test/integration/api_test/disabled_rest_api_test.rb
@@ -124,6 +128,36 @@ Without the throttle, every authenticated GET turns into a write — on a busy i
 row-level write amplification of the entire API. One-hour granularity is enough to answer the only
 question the field is for: is this token still in use, and roughly when did it stop.
 
+### Audit logging
+
+Every API credential attempt leaves a row in `api_auth_events`: who (`user_id`, null on failure),
+what kind of credential (`personal_access_token`, `api_key` or `failed`), which token when it is
+known (`personal_access_token_id` — set on failures with an expired or revoked token too, because
+"who is still sending the credential we killed" is exactly the post-incident question), the
+request path and HTTP method, the remote IP, and when. No secret material is stored, not even a
+prefix of the credential: the path is recorded without the query string precisely because `?key=`
+is a legal way to pass one.
+
+The hook is a single controller method, `ApplicationController#find_user_by_api_credential`,
+wrapping the `User.find_by_api_credential` seam — which is why the audit covers the legacy API
+key exactly as it covers personal access tokens, and would cover a third credential kind for
+free. It lives in the controller because that is where path, method and IP exist; the model seam
+stays a pure lookup returning a plain `User`. Which kind matched is re-derived from the
+credential's prefix plus one indexed lookup rather than by widening the seam's return value into
+a result object — the extra query only ever runs for token-shaped credentials.
+
+Two edges are deliberate. A successful username/password HTTP Basic login writes nothing: no API
+credential was used, the seam is never reached. A *failed* Basic login does write a `failed` row,
+because at that point the username has been tried as an API credential and the two cases are
+indistinguishable by construction — the row still contains no username and no secret.
+
+The write is synchronous, one insert per authenticated API request, and wrapped so that an audit
+DB error fails loud in the log but never turns into a client-facing 500 (`ApiAuthEvent.record`
+rescues everything; asserted by test). At the scale where that insert matters, the path out is
+buffering — an async insert or an append-only log file — behind the same `ApiAuthEvent.record`
+interface. Retention and pruning are deliberately out of scope, same as for Redmine's other
+growing tables.
+
 ## 4. Prior art, and where this diverges
 
 **This must be said plainly: a patch implementing this same pillar already exists in the ticket**
@@ -160,7 +194,10 @@ OAuth.
 - **Scopes.** The mechanism is nearly free to add on top (the permission intersection already
   exists from OAuth) but it is a separate concern and, per the maintainer's own review, belongs in
   a separate patch. Noted here rather than half-built.
-- **Audit logging, CORS, an administration panel over all users' tokens** — same reasoning.
+- **CORS, an administration panel over all users' tokens** — same reasoning. (Audit logging was
+  originally on this list, then implemented after all — see *Audit logging* above. What moved it:
+  the `find_by_api_credential` seam turned out to cover both credential kinds with one hook, so
+  the feature stopped being PAT-specific and became a property of the whole API auth path.)
 - **A known inherited hole, named rather than hidden:** Redmine issue
   [#44271](https://www.redmine.org/issues/44271) — issue attribute updates bypass the OAuth scope
   intersection. It is a defect in the existing OAuth path, and any scope mechanism layered on
@@ -182,6 +219,7 @@ Tests:
 
 ```bash
 bin/rails test test/unit/personal_access_token_test.rb
+bin/rails test test/unit/api_auth_event_test.rb
 bin/rails test test/functional/my_controller_test.rb
 bin/rails test test/integration/api_test/authentication_test.rb
 bin/rails test                       # full suite
@@ -198,8 +236,10 @@ this branch  5538 runs, 24995 assertions, 0 failures, 1 errors, 28 skips
 
 The one error is the same on both sides: `GanttsControllerTest#test_gantt_should_export_to_png`
 fails with `MiniMagick::Error` because ImageMagick's `convert` is absent from the container this
-ran in. It is environmental and pre-existing. The branch adds 46 runs and 149 assertions and
-changes nothing else.
+ran in. It is environmental and pre-existing. At the time of that comparison the branch added
+46 runs and 149 assertions and changed nothing else. The audit-logging commit landed after the
+measurement; its additions were verified suite-by-suite (the unit, authentication and
+disabled-API suites below) rather than by another full-suite pass.
 
 *On the environment:* there is no Ruby on the host this was developed on and no root to install
 one, so everything — bundler, migrations, tests, the server — ran in a `ruby:3.3-bookworm`
