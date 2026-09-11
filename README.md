@@ -152,8 +152,9 @@ with the token row, and a write at most once an hour.
 (`ApiCredentialUsage::LAST_USED_UPDATE_INTERVAL`, which lives there and nowhere else). Without the
 throttle, every authenticated GET turns into a write — on a busy integration that is a row-level
 write amplification of the entire API. One-hour granularity is enough to answer the only question
-the field is for: is this credential still in use, and roughly when did it stop. The published
-patch on the same ticket (attachment 36640) reaches the same number independently —
+the field is for: is this credential still in use, and roughly when did it stop. The patch proposed
+on the same ticket (attachment 36640 — a proposal under review, not an accepted change) reaches the
+same number independently —
 `LAST_USED_THROTTLE = 1.hour`, guarding the write with the same *is the previous mark older than
 the interval* check — so the hour is the shape of the problem rather than a local shortcut. The
 cost is stated plainly: the mark can be up to an hour stale, which is why it answers "alive or
