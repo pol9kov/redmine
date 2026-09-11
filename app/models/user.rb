@@ -555,6 +555,12 @@ class User < Principal
     Token.find_active_user('api', key)
   end
 
+  # Returns the active user matching the given API credential, which is either
+  # a personal access token or the user's API key
+  def self.find_by_api_credential(credential)
+    PersonalAccessToken.find_active_user(credential) || find_by_api_key(credential)
+  end
+
   # Makes find_by_mail case-insensitive
   def self.find_by_mail(mail)
     having_mail(mail).first

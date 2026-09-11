@@ -24,6 +24,14 @@ class Redmine::ApiTest::AuthenticationTest < Redmine::ApiTest::Base
     User.current = nil
   end
 
+  def generate_personal_access_token(user=nil)
+    PersonalAccessToken.create!(
+      :user => user || User.generate!,
+      :name => 'API test',
+      :expires_at => 30.days.from_now
+    )
+  end
+
   def test_api_should_deny_without_credentials
     get '/users/current.xml'
     assert_response :unauthorized
@@ -95,6 +103,73 @@ class Redmine::ApiTest::AuthenticationTest < Redmine::ApiTest::Base
     token = Token.create!(:user => user, :action => 'feeds') # not the API key
     get "/users/current.xml", :headers => {'X-Redmine-API-Key' => token.value.to_s}
     assert_response :unauthorized
+  end
+
+  def test_api_should_accept_auth_using_personal_access_token_as_request_header
+    token = generate_personal_access_token
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
+    assert_response :ok
+  end
+
+  def test_api_should_accept_auth_using_personal_access_token_as_parameter
+    token = generate_personal_access_token
+    get "/users/current.xml?key=#{token.plain_value}"
+    assert_response :ok
+  end
+
+  def test_api_should_accept_http_basic_auth_using_personal_access_token
+    token = generate_personal_access_token
+    get '/users/current.xml', :headers => credentials(token.plain_value, 'X')
+    assert_response :ok
+  end
+
+  def test_api_should_deny_auth_using_expired_personal_access_token
+    token = generate_personal_access_token
+    token.update_column(:expires_at, 1.minute.ago)
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
+    assert_response :unauthorized
+  end
+
+  def test_api_should_deny_auth_using_revoked_personal_access_token
+    token = generate_personal_access_token
+    token.revoke!
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
+    assert_response :unauthorized
+  end
+
+  def test_api_should_deny_auth_using_invalid_personal_access_token
+    generate_personal_access_token
+    ['rmpat_invalid', PersonalAccessToken.generate_value].each do |value|
+      get '/users/current.xml', :headers => {'X-Redmine-API-Key' => value}
+      assert_response :unauthorized
+    end
+  end
+
+  def test_api_should_deny_auth_using_personal_access_token_of_a_locked_user
+    token = generate_personal_access_token(User.find(5))
+    assert User.find(5).locked?
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
+    assert_response :unauthorized
+  end
+
+  def test_api_key_should_still_be_accepted_for_a_user_owning_personal_access_tokens
+    user = User.generate!
+    token = generate_personal_access_token(user)
+
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => user.api_key}
+    assert_response :ok
+
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
+    assert_response :ok
+  end
+
+  def test_api_should_record_the_usage_of_the_personal_access_token
+    token = generate_personal_access_token
+    assert_nil token.last_used_at
+
+    get '/users/current.xml', :headers => {'X-Redmine-API-Key' => token.plain_value}
+    assert_response :ok
+    assert_not_nil token.reload.last_used_at
   end
 
   def test_api_should_trigger_basic_http_auth_with_basic_authorization_header
