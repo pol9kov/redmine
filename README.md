@@ -241,3 +241,18 @@ curl -s -o /dev/null -w '%{http_code}\n' -u "$TOKEN:x"  localhost:3000/users/cur
   case into a create-time failure rather than a silent cross-user match.
 - Expiry is checked at authentication time, not by a sweeper. Expired rows accumulate until
   something prunes them; no pruning job is included.
+
+## 8. How this was built — the AI workflow
+
+I work through an AI agent platform I built and run in production (Imperia OS); the agent is
+Claude (Anthropic). On this assignment the agent wrote the code and ran the suites; the decisions
+were made in conversation and are visible in the raw logs that accompany this submission: keeping
+the scope to the PAT core after reading the maintainer's review, soft revoke instead of delete,
+exact expiry time instead of a date, and treating the patch already attached to the ticket as
+prior art rather than pretending it is not there.
+
+Tools: Claude agents driving the edits and test runs; Ruby 3.3 in Docker (`ruby:3.3-bookworm`)
+for the app and suites against SQLite; git and the GitHub CLI. Every turn is persisted by the
+platform, so the logs are exports from its store, not copy-paste from a chat window: the Russian
+original of the conversation, a message-for-message English translation, and the agent's full
+tool-call trace. The commit history on this branch is the real work history — nothing squashed.
