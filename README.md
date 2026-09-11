@@ -182,9 +182,30 @@ Tests:
 
 ```bash
 bin/rails test test/unit/personal_access_token_test.rb
+bin/rails test test/functional/my_controller_test.rb
 bin/rails test test/integration/api_test/authentication_test.rb
 bin/rails test                       # full suite
 ```
+
+**Measured, not asserted.** The full suite was run twice on the same machine — once on a clean
+worktree at tag `6.1.2`, once on this branch — so that "nothing was broken" is a comparison rather
+than a claim:
+
+```
+6.1.2        5492 runs, 24846 assertions, 0 failures, 1 errors, 28 skips
+this branch  5538 runs, 24995 assertions, 0 failures, 1 errors, 28 skips
+```
+
+The one error is the same on both sides: `GanttsControllerTest#test_gantt_should_export_to_png`
+fails with `MiniMagick::Error` because ImageMagick's `convert` is absent from the container this
+ran in. It is environmental and pre-existing. The branch adds 46 runs and 149 assertions and
+changes nothing else.
+
+*On the environment:* there is no Ruby on the host this was developed on and no root to install
+one, so everything — bundler, migrations, tests, the server — ran in a `ruby:3.3-bookworm`
+container with the source tree bind-mounted. That is also why ImageMagick is missing, and why the
+baseline run exists at all: with an unusual environment, "the tests pass" is only worth something
+next to "and they passed identically before my patch".
 
 End-to-end, against a running server (enable the REST API first in
 *Administration → Settings → API*):
