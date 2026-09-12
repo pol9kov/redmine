@@ -17,8 +17,17 @@ while the work was still in flight; everything after that instant — the design
 about where the last-used mark belongs, the audit-log commits, the full-suite run and the
 analysis of its SQLite noise, the fork and the merge request — was added afterwards. Two
 turn rows that had been captured mid-flight, with a "still running" header and an empty
-message log, are now filled in from the finished rows. These are all the sessions in which
-this assignment was discussed or implemented; nothing on the topic was left out.
+message log, are now filled in from the finished rows. A second cut, made on 2026-09-12
+while reviewing this submission, restored eight messages of 19:26–19:59 UTC that the first
+export had dropped as unrelated platform talk: the stream was interleaved, and those eight
+are the assignment — they carry the design argument (write-per-request, INSERT vs UPDATE,
+SKIP LOCKED) behind the last three README commits. The closing question of that thread was
+answered on 2026-09-12 through a different channel — a Claude Code CLI session — and the
+exchange that followed the answer overturned part of it and changed the branch: the hourly
+last-used throttle was removed (commit f10234feb). Both the answer and that follow-up
+exchange are reproduced verbatim in an appendix at the end of the conversation files. These
+are all the sessions in which this assignment was discussed or implemented; nothing on the
+topic was left out.
 
 Nothing inside any session was edited — not the wording, the typos, the profanity or the
 speech-recognition artifacts — with exactly one class of exception, and every instance of
@@ -30,6 +39,9 @@ inside the very commands it ran to check this export for leaks. Nothing said abo
 engineering work was touched, and no other cut was made. Only whole messages were selected:
 sessions on this assignment are in, the owner's personal conversations and his unrelated
 work on the agent platform itself (which share the same rooms and the same minutes) are out.
+Two admitted messages interleave a platform-defect thread with this assignment; they are
+reproduced whole rather than trimmed, so a few paragraphs about the agent platform's own
+bugs remain in the stream.
 
 `conversation-ru.md` is the original in Russian; `conversation-en.md` is a
 message-for-message English translation of it, same order and same headers;

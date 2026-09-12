@@ -359,3 +359,86 @@ The numbers are removed and in the MR: the name length limit and the path trunca
 ## [2026-09-11 19:20:11 UTC] AI agent (Claude, Imperia OS platform-assistant)
 
 I kept the hour and closed it with a decision: the README now carries both the price (the mark may lag by up to an hour — it answers «alive or abandoned», not «at which second») and the fact that an independent patch on the same ticket arrived at the same hour. Commit c3fddf060 in the MR. Say «take it off» — it comes off with one line together with this paragraph.
+
+## [2026-09-11 19:26:14 UTC] AI agent (Claude, Imperia OS platform-assistant)
+
+Your message at 16:16 BA really was left without an answer — it arrived while the edit was in progress and did not land in my window; I found it only now, by reading the room. That is my miss, not yours.
+
+**What is wrong with a write on every request.** Not the volume, but the fact that all requests of ONE key hit ONE row: parallel cron invocations queue up on that row's lock, in PostgreSQL every update spawns a new row version and work for autovacuum, and all of it rides into the WAL, which means into the replicas and the backups. And separately — a GET stops being a read: a request that could have been served by a replica is forced to go to the primary. The honest other side, since we are counting it: on our branch an audit row is already written on every request — that is, the argument «we turn a read into a write» is half spent already. The difference is in the form of the write: the audit is an INSERT at the end of a table, it competes with no one, while the mark is an UPDATE of one and the same row.
+
+**The patch is not a reference.** It is a proposal in an open ticket, accepted by no one: the maintainer in the discussion doubts whether PATs are needed at all and suggests issuing long-lived tokens through the existing OAuth applications. What to align with are the conventions of Redmine itself (names, tests, compatibility) and the argument, while agreement with the patch is only evidence that the solution is not exotic; and we did diverge from it deliberately in three places (revoke as a kept row instead of deletion, the mark in a separate table, expiry as a datetime). I have corrected exactly that in the README — it is now named a proposal under review, not a source of truth; commit aff0a6774.
+
+## [2026-09-11 19:32:01 UTC] Egor
+
+[↪ in reply to (assistant): «Your message at 16:16 BA really was left without an answer — it arrived while the edit was in progress and did not land in my window; I found it only now, by re…»]
+
+So maybe do it via an INSERT and look up the last entry? Work with it like with the audit row — are audit rows cleaned up at some point? Or is that overengineering and nobody needs it?
+
+## [2026-09-11 19:43:56 UTC] AI agent (Claude, Imperia OS platform-assistant)
+
+The topic router is not to blame here, and I verified that by the journals: the task for your message was created and queued into exactly this room — the addressee was chosen correctly. It was killed by something else, and that is a real bug: my answer at 16:19 BA replied to a different message of yours, but the send stamped ALL your open questions as «answered», including this one (it got into the `in_reply_to` field together with the real addressee). Then the duplicate guard read that stamp as proof of «already answered» and closed the task at 16:19:56 — before anyone had taken it up; a one-shot resurrection two minutes later ran into the same evidence and buried it for good. The second layer: within a running turn your message is shown to me three times and then goes dark — by a display counter, not by the fact of an answer; that is why it vanished from my window at 16:17:46. The fix for both places is being written now and will go into the code.
+
+About the INSERT — the instinct is right, and it leads further than you proposed: we ALREADY write a journal row on every request, so a separate «last use» table in INSERT mode would be a second journal of the same thing. The minimal variant is to drop `api_credential_usages` entirely and read the mark out of the journal as MAX(time) for that credential, adding an index: then both the write-on-read and the whole hour disappear. What we pay for that, honestly: nobody prunes the journal today (the README says so — there is no retention), and if pruning is ever added, the mark dies together with the old rows; plus a required feature starts resting on the optional audit. I am for dropping the table and deriving from the journal — say «drop it», and I will; that is exactly minus one entity and minus one constant.
+
+## [2026-09-11 19:50:40 UTC] Egor
+
+[↪ in reply to (assistant): «The topic router is not to blame here, and I verified that by the journals: the task for your message was created and queued into exactly this room — the addres…»]
+
+A required feature must not rest on the optional audit
+
+## [2026-09-11 19:52:29 UTC] Egor
+
+Is the problem that an update of the row locks that row? Can it be solved simply by not updating if the row is locked? Then it would not differ from an insert?
+
+## [2026-09-11 19:52:45 UTC] AI agent (Claude, Imperia OS platform-assistant)
+
+Agreed about the layer, but the cut runs elsewhere than where you named it, and that matters — otherwise we tear down the wrong thing. The link itself — «this answer is to this question» (the `in_reply_to` field) — is not a crutch but the only honest fact: «answered» is DERIVED from it and needs no second copy. The crutch is the guess next to it: the send was gluing into that field everything you had open as well, without knowing whether it had been answered. It is not the stamp that must go, but the lie inside it — that is what is being fixed now.
+
+The duplicate guard does exactly one thing: it does not raise a turn on something that already has an answer in the feed. On an honest link that too is a derivation, not a patch — and I would not remove it, because you hate a duplicated answer more than a miss. The real crutches around it are two, and both went into the fix: it counts an answer from my own turn as proof, without telling it apart from someone else's, and the cursor darkens the unanswered by a display counter instead of by the fact of an answer.
+
+Your «the agent itself does not forget» is exactly what replaces the layer, and I like it for precisely this economy: one and the same derivation from the events — «which of his messages have no bound answer» — works in two places, in the window of the running turn (until I have answered, the line does not go dark) and at the closing of the turn (do not close silently while something is unanswered). Then not a single separate entity is needed: the guard becomes that same derivation.
+
+Where I will not agree: «if it forgets — I will remind» as the only mechanism shifts the work onto you, and you reminded me twice today. So I keep the check at closing machine-side — it is not a guard over the agent, it is the same rule «do not leave silently», simply carried out.
+
+On the redmine side — accepted, I am not dropping the table, and your principle sits in the README verbatim: the mark is deliberately NOT derived from the journal, because a required feature must not rest on the optional audit. Commit 0d78c7150.
+
+## [2026-09-11 19:53:39 UTC] AI agent (Claude, Imperia OS platform-assistant)
+
+Yes, it is exactly the row lock, and your device exists — in PostgreSQL and MySQL 8 it is `SKIP LOCKED` / `NOWAIT`: do not wait, skip. For this particular fact it is safe on top of that, and here is why: whoever is holding the row is writing the very same value — the time «now» — so the lost update loses nothing.
+
+By contention it truly becomes like an INSERT: there is no queue on the row. The difference stays elsewhere — an INSERT grows the table, and then it turns into a second journal, while here it is still one row per credential. The price of the device is portability: Redmine officially installs on five adapters (mysql2/trilogy, postgresql, sqlite3, sqlserver), and in SQLite there are no row locks at all — a writer takes the whole database, and `SKIP LOCKED` does not exist there; in the entire Redmine codebase the device is not used in a single place. That is, for the sake of a field that calmly tolerates staleness we would be writing SQL for a specific database — and our tests run on SQLite precisely.
+
+And the hour does almost the same thing, only deciding by the data rather than by the lock: a request arriving on a fresh mark does not write at all. The honest difference — the hour does not eliminate the contention, it reduces it: at the moment the mark goes stale, parallel requests will still collide on that row once an hour. I can do skip-locked for PG and MySQL with a plain update on the rest, but I would not do it myself: it is database-specific code for a precision the field does not need.
+
+## [2026-09-11 19:59:36 UTC] Egor
+
+[↪ in reply to (assistant): «Yes, it is exactly the row lock, and your device exists — in PostgreSQL and MySQL 8 it is `SKIP LOCKED` / `NOWAIT`: do not wait, skip. For this particular fact …»]
+
+And how is something like this solved in sqlite? research it
+
+---
+
+## Appendix: the closing question, answered through a different channel
+
+The question «And how is something like this solved in sqlite? research it» (19:59:36) was left in the room without an answer — that evening the conversation moved on to the defects of the agent platform itself. The answer was written on 2026-09-12, while assembling this submission, in a different channel: the Claude Code CLI session (Claude Fable 5) that was checking these logs and closing the loose ends. It has no room event, so it is reproduced here verbatim under its own heading rather than inserted into the message stream.
+
+> In SQLite there is no per-row «do not wait, skip», because there is no per-row locking either: there is always exactly one writer, and the lock is taken on the whole database (in WAL mode readers do not wait — only writers serialize). The analogue of SKIP LOCKED there is a single one and lives at the connection level: busy_timeout = 0 — a writer that finds the database busy gets SQLITE_BUSY immediately and is free to skip the write instead of waiting. The Rails sqlite3 adapter expresses this as the timeout setting in database.yml — our stand has 5000 ms («wait up to 5 s, then an error»), and that error can be caught and swallowed.
+>
+> For our last_used mark this confirms the choice from the other side: skipping the write is safe (the loser would have written the very same «now»), but «skip on busy» in SQLite is a property of the connection, not of the row, and the code would again come out adapter-specific — exactly like SKIP LOCKED for PostgreSQL/MySQL. The hourly throttle does the same thing with data, identically on every database Redmine supports — we keep it as is, nothing lands in the code.
+
+The conversation did not end there: the owner replied in that same CLI session, and the exchange ended in a code change. Verbatim:
+
+**Egor:** so it should be done via SQLITE_BUSY then, it is simple there, and then the idea is implementable in all the DBs
+
+**AI agent:** Here I will object before doing it: you are right that «do not wait» is implementable on all four databases (PG/MySQL — `NOWAIT`/`SKIP LOCKED`, SQL Server — `SET LOCK_TIMEOUT 0`, SQLite — `busy_timeout 0` → `SQLITE_BUSY`). But that closes only half of the problem — the queue on the row at a collision. The hour stands because of the other half: without it EVERY API GET becomes a write (WAL, replicas, the request is forced to go to the primary) — skip-on-busy does not touch that price at all, we would write almost always and skip almost never.
+And the SQLite leg has a catch: `busy_timeout` is a property of the whole connection, not of the statement, so around one UPDATE we would have to juggle the PRAGMA back and forth in the hot authentication path. In total: four different mechanisms across the adapters instead of one constant — for a precision about which the README already carries your own accepted argument, «the field does not need it». My recommendation — keep the hour, do not build the skip.
+
+**Egor:** wait a moment. isn't SQLITE client-side only anyway?
+
+**AI agent:** SQLite is not «client-side» but embedded: it is not a server but a library inside the application's own process, the database is simply a file next to it. For Redmine it is one of the officially supported databases: a typical production runs MySQL/PostgreSQL, while SQLite lives in small single-host installs, in the dev setup and — important for us — their test suite runs on it (as does our stand). So «the idea must be implementable in all DBs» runs into it not because of production, but because a portable feature must not break where its tests run. My argument against stays the same — the skip removes only the queue, not the write-per-GET.
+
+**Egor:** a write on every get already happens anyway, into the log journal or whatever it is
+
+**AI agent:** Verified: the audit writes an INSERT on every API request unconditionally (`find_user_by_api_credential` → `ApiAuthEvent.record`, there is no off switch) — you are right, «the GET has already become a write» on this branch. The consequence is stronger than your proposal: since that is so, an exact last_used needs neither the skip nor SQLITE_BUSY — a plain UPDATE on every request is portable by itself, collisions write one and the same «now», and in SQLite writers serialize on the audit insert anyway. I am removing the hour and the throttle entirely — that is minus one constant and minus one branch, exactly your line.
+
+The outcome in code: the throttle is removed by commit f10234feb — the mark is now written on every request; the four affected suites run by hand — 78 tests, 215 assertions, 0 failures.
