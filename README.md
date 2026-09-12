@@ -354,7 +354,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -u "$TOKEN:x"  localhost:3000/users/cur
 
 I work through an AI agent platform I built and run in production (Imperia OS); the agent is
 Claude (Anthropic). On this assignment the agent wrote the code and ran the suites; the decisions
-were made in conversation and are visible in the raw logs that accompany this submission: keeping
+were made in conversation and are visible in the raw logs in [`ai-logs/`](ai-logs/) on this branch: keeping
 the scope to the PAT core after reading the maintainer's review, soft revoke instead of delete,
 exact expiry time instead of a date, and treating the patch already attached to the ticket as
 prior art rather than pretending it is not there.
