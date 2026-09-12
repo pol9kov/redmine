@@ -18,6 +18,27 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 module MyHelper
+  # Number of days offered as expiration of a new personal access token
+  PERSONAL_ACCESS_TOKEN_EXPIRATION_DAYS = [7, 30, 90, 365]
+
+  # Returns the options for the expiration select of a new personal access token
+  def personal_access_token_expiration_options
+    PERSONAL_ACCESS_TOKEN_EXPIRATION_DAYS.map do |days|
+      [l(:label_x_days, :count => days), days.days.from_now.iso8601]
+    end
+  end
+
+  # Returns the localized state of the given personal access token
+  def personal_access_token_status(token)
+    if token.revoked?
+      l(:label_personal_access_token_status_revoked)
+    elsif token.expired?
+      l(:label_personal_access_token_status_expired)
+    else
+      l(:label_personal_access_token_status_active)
+    end
+  end
+
   # Renders the blocks
   def render_blocks(blocks, user, options={})
     s = ''.html_safe

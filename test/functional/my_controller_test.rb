@@ -832,4 +832,261 @@ class MyControllerTest < Redmine::ControllerTest
     assert_match /reset/, flash[:notice]
     assert_redirected_to '/my/account'
   end
+
+  def test_account_should_show_the_number_of_active_personal_access_tokens
+    generate_personal_access_token(:name => 'CI server')
+    generate_personal_access_token(:name => 'Revoked').revoke!
+
+    with_settings :rest_api_enabled => '1' do
+      get :account
+    end
+    assert_response :success
+    assert_select '#sidebar a[href=?]', '/my/personal_access_tokens'
+    assert_select '#sidebar', :text => /1 active personal access token/
+  end
+
+  def test_account_should_not_show_personal_access_tokens_with_rest_api_disabled
+    with_settings :rest_api_enabled => '0' do
+      get :account
+    end
+    assert_response :success
+    assert_select '#sidebar a[href=?]', '/my/personal_access_tokens', 0
+  end
+
+  def test_personal_access_tokens
+    token = generate_personal_access_token(:name => 'CI server')
+
+    get :personal_access_tokens
+    assert_response :success
+    assert_select 'h2', :text => /Personal access tokens/
+    assert_select "tr#personal-access-token-#{token.id}" do
+      assert_select 'td.name', :text => 'CI server'
+      assert_select 'td.status', :text => 'Active'
+      assert_select 'td.last_used_on', :text => 'none'
+      assert_select 'td.buttons a[href=?][data-method=post]',
+                    "/my/personal_access_tokens/#{token.id}/revoke"
+    end
+    assert_select 'form#new_personal_access_token_form' do
+      assert_select 'input[name=?]', 'personal_access_token[name]'
+      assert_select 'select[name=?]', 'personal_access_token[expires_on]' do
+        assert_select 'option', :text => '30 days'
+      end
+    end
+  end
+
+  def test_personal_access_tokens_should_show_the_state_of_each_token
+    active = generate_personal_access_token(:name => 'Active token')
+    expired = generate_personal_access_token(:name => 'Expired token')
+    expired.update!(:expires_on => 1.day.ago)
+    revoked = generate_personal_access_token(:name => 'Revoked token').revoke!
+
+    get :personal_access_tokens
+    assert_response :success
+    assert_select "tr#personal-access-token-#{active.id} td.status", :text => 'Active'
+    assert_select "tr#personal-access-token-#{expired.id} td.status", :text => 'Expired'
+    assert_select "tr#personal-access-token-#{revoked.id} td.status", :text => 'Revoked'
+    # Only an active token can be revoked
+    assert_select "tr#personal-access-token-#{active.id} td.buttons a", 1
+    assert_select "tr#personal-access-token-#{expired.id} td.buttons a", 0
+    assert_select "tr#personal-access-token-#{revoked.id} td.buttons a", 0
+  end
+
+  def test_personal_access_tokens_should_show_the_last_used_marks_with_one_query
+    tokens = 3.times.map {|i| generate_personal_access_token(:name => "Token #{i}")}
+    tokens.each(&:record_usage)
+
+    # The marks live in their own table: preloaded, not one query per token
+    assert_queries_match(/api_credential_usages/, :count => 1) do
+      get :personal_access_tokens
+    end
+    assert_response :success
+    assert_select 'td.last_used_on', 3
+    assert_select 'td.last_used_on', :text => 'none', :count => 0
+  end
+
+  def test_personal_access_tokens_should_not_list_tokens_of_other_users
+    token = generate_personal_access_token(:user => User.find(3), :name => 'Not mine')
+
+    get :personal_access_tokens
+    assert_response :success
+    assert_select "tr#personal-access-token-#{token.id}", 0
+    assert_not_include 'Not mine', response.body
+  end
+
+  def test_personal_access_tokens_without_tokens
+    get :personal_access_tokens
+    assert_response :success
+    assert_select 'p.nodata'
+    assert_select 'form#new_personal_access_token_form'
+  end
+
+  def test_personal_access_tokens_should_require_login
+    @request.session[:user_id] = nil
+
+    get :personal_access_tokens
+    assert_redirected_to '/login?back_url=http%3A%2F%2Ftest.host%2Fmy%2Fpersonal_access_tokens'
+  end
+
+  def test_create_personal_access_token
+    assert_difference 'PersonalAccessToken.count' do
+      post(
+        :create_personal_access_token,
+        :params => {
+          :personal_access_token => {
+            :name => 'Laptop', :expires_on => 30.days.from_now.iso8601
+          }
+        }
+      )
+    end
+    assert_response :success
+
+    token = PersonalAccessToken.order(:id => :desc).first
+    assert_equal User.find(2), token.user
+    assert_equal 'Laptop', token.name
+    assert_match /created/, flash[:notice]
+
+    # The value is displayed, and it is the one the token was hashed from
+    assert_select '#new-personal-access-token', :text => /it will not be shown again/
+    value = css_select('#new-personal-access-token pre').text
+    assert_match PersonalAccessToken::VALUE_FORMAT, value
+    assert_equal token.hashed_value, PersonalAccessToken.digest(value)
+  end
+
+  def test_create_personal_access_token_should_display_the_value_only_once
+    post(
+      :create_personal_access_token,
+      :params => {
+        :personal_access_token => {
+          :name => 'Laptop', :expires_on => 30.days.from_now.iso8601
+        }
+      }
+    )
+    assert_response :success
+    value = css_select('#new-personal-access-token pre').text
+    assert value.present?
+
+    get :personal_access_tokens
+    assert_response :success
+    assert_select '#new-personal-access-token', 0
+    assert_not_include value, response.body
+  end
+
+  def test_create_personal_access_token_should_ignore_the_submitted_user
+    assert_difference 'PersonalAccessToken.count' do
+      post(
+        :create_personal_access_token,
+        :params => {
+          :personal_access_token => {
+            :name => 'Laptop', :expires_on => 30.days.from_now.iso8601,
+            :user_id => 3
+          }
+        }
+      )
+    end
+    assert_response :success
+    assert_equal User.find(2), PersonalAccessToken.order(:id => :desc).first.user
+  end
+
+  def test_create_personal_access_token_with_failure
+    assert_no_difference 'PersonalAccessToken.count' do
+      post(
+        :create_personal_access_token,
+        :params => {
+          :personal_access_token => {:name => '', :expires_on => ''}
+        }
+      )
+    end
+    assert_response :success
+    assert_select_error /Name cannot be blank/
+    assert_select_error /Expires cannot be blank/
+    assert_select '#new-personal-access-token', 0
+  end
+
+  def test_create_personal_access_token_with_a_name_already_used
+    generate_personal_access_token(:name => 'Laptop')
+
+    assert_no_difference 'PersonalAccessToken.count' do
+      post(
+        :create_personal_access_token,
+        :params => {
+          :personal_access_token => {
+            :name => 'Laptop', :expires_on => 30.days.from_now.iso8601
+          }
+        }
+      )
+    end
+    assert_response :success
+    assert_select_error /Name has already been taken/
+    assert_select '#new-personal-access-token', 0
+  end
+
+  def test_create_personal_access_token_with_a_name_of_another_user_should_be_accepted
+    generate_personal_access_token(:user => User.find(3), :name => 'Laptop')
+
+    assert_difference 'PersonalAccessToken.count' do
+      post(
+        :create_personal_access_token,
+        :params => {
+          :personal_access_token => {
+            :name => 'Laptop', :expires_on => 30.days.from_now.iso8601
+          }
+        }
+      )
+    end
+    assert_response :success
+  end
+
+  def test_create_personal_access_token_with_expiration_in_the_past
+    assert_no_difference 'PersonalAccessToken.count' do
+      post(
+        :create_personal_access_token,
+        :params => {
+          :personal_access_token => {
+            :name => 'Laptop', :expires_on => 1.day.ago.iso8601
+          }
+        }
+      )
+    end
+    assert_response :success
+    assert_select_error /Expires is invalid/
+  end
+
+  def test_revoke_personal_access_token
+    token = generate_personal_access_token(:name => 'CI server')
+
+    post :revoke_personal_access_token, :params => {:id => token.id}
+    assert_redirected_to '/my/personal_access_tokens'
+    assert_match /revoked/, flash[:notice]
+
+    token.reload
+    assert token.revoked?
+    assert_not token.active?
+  end
+
+  def test_revoke_personal_access_token_of_another_user_should_respond_with_404
+    token = generate_personal_access_token(:user => User.find(3), :name => 'Not mine')
+
+    post :revoke_personal_access_token, :params => {:id => token.id}
+    assert_response :not_found
+    assert_nil token.reload.revoked_on
+  end
+
+  def test_revoke_personal_access_token_should_not_be_reachable_with_get
+    assert_raise ActionController::RoutingError do
+      Rails.application.routes.recognize_path(
+        '/my/personal_access_tokens/1/revoke', :method => :get
+      )
+    end
+  end
+
+  private
+
+  def generate_personal_access_token(attributes={})
+    PersonalAccessToken.create!(
+      {
+        :user => User.find(2), :name => 'Test token',
+        :expires_on => 30.days.from_now
+      }.merge(attributes)
+    )
+  end
 end

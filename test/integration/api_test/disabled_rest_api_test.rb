@@ -41,6 +41,34 @@ class Redmine::ApiTest::DisabledRestApiTest < Redmine::ApiTest::Base
     assert_response :forbidden
   end
 
+  def test_with_a_valid_personal_access_token
+    @user = User.generate!
+    @token =
+      PersonalAccessToken.create!(
+        :user => @user, :name => 'API test', :expires_on => 30.days.from_now
+      )
+
+    get "/news.xml?key=#{@token.plain_value}"
+    assert_response :forbidden
+
+    get "/news.json?key=#{@token.plain_value}"
+    assert_response :forbidden
+  end
+
+  def test_with_valid_personal_access_token_http_authentication
+    @user = User.generate!
+    @token =
+      PersonalAccessToken.create!(
+        :user => @user, :name => 'API test', :expires_on => 30.days.from_now
+      )
+
+    get "/news.xml", :headers => credentials(@token.plain_value, 'X')
+    assert_response :forbidden
+
+    get "/news.json", :headers => credentials(@token.plain_value, 'X')
+    assert_response :forbidden
+  end
+
   def test_with_valid_username_password_http_authentication
     @user = User.generate! do |user|
       user.password = 'my_password'
@@ -62,5 +90,22 @@ class Redmine::ApiTest::DisabledRestApiTest < Redmine::ApiTest::Base
 
     get "/news.json", :headers => credentials(@token.value, 'X')
     assert_response :forbidden
+  end
+
+  def test_disabled_rest_api_should_not_record_audit_events
+    @user = User.generate!
+    @token =
+      PersonalAccessToken.create!(
+        :user => @user, :name => 'API test', :expires_on => 30.days.from_now
+      )
+    @key = Token.create!(:user => @user, :action => 'api')
+
+    assert_no_difference 'ApiAuthEvent.count' do
+      get "/news.xml?key=#{@token.plain_value}"
+      assert_response :forbidden
+
+      get "/news.xml?key=#{@key.value}"
+      assert_response :forbidden
+    end
   end
 end

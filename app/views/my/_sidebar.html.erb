@@ -45,4 +45,11 @@
   (<%= link_to l(:button_reset), my_api_key_path, :method => :post %>)
   </p>
 </div>
+
+<h4><%= l(:label_personal_access_token_plural) %></h4>
+
+<p>
+<%= l(:label_x_active_personal_access_tokens, :count => @user.personal_access_tokens.active.count) %>
+(<%= link_to l(:button_show), my_personal_access_tokens_path %>)
+</p>
 <% end %>

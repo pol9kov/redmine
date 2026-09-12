@@ -1,0 +1,60 @@
+<%= title [l(:label_my_account), my_account_path], l(:label_personal_access_token_plural) %>
+
+<% if @created_personal_access_token %>
+<div class="box" id="new-personal-access-token">
+  <p><strong><%= l(:text_personal_access_token_copy_now) %></strong></p>
+  <pre class="autoscroll"><%= @created_personal_access_token.plain_value %></pre>
+</div>
+<% end %>
+
+<% if @personal_access_tokens.any? %>
+<div class="autoscroll">
+<table class="list personal-access-tokens">
+  <thead><tr>
+    <th><%= l(:field_name) %></th>
+    <th><%= l(:field_created_on) %></th>
+    <th><%= l(:field_expires_on) %></th>
+    <th><%= l(:field_last_used_on) %></th>
+    <th><%= l(:field_status) %></th>
+    <th></th>
+  </tr></thead>
+  <tbody>
+  <% @personal_access_tokens.each do |token| %>
+    <tr id="personal-access-token-<%= token.id %>" class="<%= cycle('odd', 'even') %>">
+      <td class="name"><%= token.name %></td>
+      <td class="created_on"><%= format_time(token.created_at) %></td>
+      <td class="expires_on"><%= format_time(token.expires_on) %></td>
+      <td class="last_used_on"><%= token.last_used_on ? format_time(token.last_used_on) : l(:label_none) %></td>
+      <td class="status"><%= personal_access_token_status(token) %></td>
+      <td class="buttons">
+        <% if token.active? %>
+          <%= link_to sprite_icon('del', l(:button_revoke)),
+                      revoke_my_personal_access_token_path(token),
+                      :method => :post,
+                      :data => {:confirm => l(:text_personal_access_token_revoke_confirmation)},
+                      :class => 'icon icon-del' %>
+        <% end %>
+      </td>
+    </tr>
+  <% end %>
+  </tbody>
+</table>
+</div>
+<% else %>
+  <p class="nodata"><%= l(:label_no_data) %></p>
+<% end %>
+
+<h3><%= l(:label_personal_access_token_new) %></h3>
+
+<p><em class="info"><%= l(:text_personal_access_token_info) %></em></p>
+
+<%= labelled_form_for @personal_access_token,
+                      :url => my_personal_access_tokens_path,
+                      :html => {:id => 'new_personal_access_token_form', :method => :post} do |f| %>
+<%= error_messages_for 'personal_access_token' %>
+<div class="box tabular">
+  <p><%= f.text_field :name, :required => true, :size => 40 %></p>
+  <p><%= f.select :expires_on, personal_access_token_expiration_options, :include_blank => true, :required => true %></p>
+</div>
+<p><%= submit_tag l(:button_create) %></p>
+<% end %>

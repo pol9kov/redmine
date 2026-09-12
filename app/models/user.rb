@@ -102,6 +102,7 @@ class User < Principal
   has_one :api_token, lambda {where "#{table.name}.action='api'"}, :class_name => 'Token'
   has_many :email_addresses, :dependent => :delete_all
   has_many :reactions, dependent: :delete_all
+  has_many :personal_access_tokens, dependent: :delete_all
   belongs_to :auth_source
 
   scope :logged, lambda {where("#{User.table_name}.status <> #{STATUS_ANONYMOUS}")}
@@ -552,6 +553,25 @@ class User < Principal
 
   def self.find_by_api_key(key)
     Token.find_active_user('api', key)
+  end
+
+  # Returns the active user matching the given API credential, which is either
+  # a personal access token or the user's API key
+  #
+  # The API key branch does not go through find_by_api_key, which hands back
+  # the user only: recording the usage needs the id of the Token row, and
+  # Token.find_token is where that row is already fetched, so the mark costs
+  # no extra read
+  def self.find_by_api_credential(credential)
+    user = PersonalAccessToken.find_active_user(credential)
+    return user if user
+
+    token = Token.find_token('api', credential)
+    user = token&.user
+    return nil unless user&.active?
+
+    ApiCredentialUsage.record(ApiCredentialUsage::API_KEY, token.id)
+    user
   end
 
   # Makes find_by_mail case-insensitive
