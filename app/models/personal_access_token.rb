@@ -110,8 +110,7 @@ class PersonalAccessToken < ApplicationRecord
     usage&.last_used_on
   end
 
-  # Records that the token was used, at most once per
-  # ApiCredentialUsage::LAST_USED_UPDATE_INTERVAL
+  # Records that the token was used
   def record_usage(time=Time.now)
     ApiCredentialUsage.record(ApiCredentialUsage::PERSONAL_ACCESS_TOKEN, id, time)
     association(:usage).reset

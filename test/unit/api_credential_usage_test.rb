@@ -33,24 +33,12 @@ class ApiCredentialUsageTest < ActiveSupport::TestCase
     assert_not_nil usage.last_used_on
   end
 
-  def test_record_should_not_update_within_the_interval
+  def test_record_should_refresh_the_mark_on_every_use
     ApiCredentialUsage.record(API_KEY, 42)
     first_use = ApiCredentialUsage.last.last_used_on
 
     assert_no_difference 'ApiCredentialUsage.count' do
-      travel_to(ApiCredentialUsage::LAST_USED_UPDATE_INTERVAL.from_now - 1.minute) do
-        assert_nil ApiCredentialUsage.record(API_KEY, 42)
-      end
-    end
-    assert_equal first_use.to_i, ApiCredentialUsage.last.last_used_on.to_i
-  end
-
-  def test_record_should_update_once_the_interval_has_passed
-    ApiCredentialUsage.record(API_KEY, 42)
-    first_use = ApiCredentialUsage.last.last_used_on
-
-    assert_no_difference 'ApiCredentialUsage.count' do
-      travel_to(ApiCredentialUsage::LAST_USED_UPDATE_INTERVAL.from_now + 1.minute) do
+      travel_to(1.minute.from_now) do
         assert_not_nil ApiCredentialUsage.record(API_KEY, 42)
       end
     end

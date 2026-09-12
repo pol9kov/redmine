@@ -149,19 +149,18 @@ point, `ApiCredentialUsage.record(kind, id)`: the legacy key is marked in
 `User.find_by_api_credential`, from the `Token` row `Token.find_token` has already fetched, so
 nothing looks the credential up twice. The price of the separate table is named honestly: one
 indexed read of the mark per authenticated request, against a column read that used to come free
-with the token row, and a write at most once an hour.
+with the token row.
 
-**The mark is throttled** to one write per hour per credential
-(`ApiCredentialUsage::LAST_USED_UPDATE_INTERVAL`, which lives there and nowhere else). Without the
-throttle, every authenticated GET turns into a write — on a busy integration that is a row-level
-write amplification of the entire API. One-hour granularity is enough to answer the only question
-the field is for: is this credential still in use, and roughly when did it stop. The patch proposed
-on the same ticket (attachment 36640 — a proposal under review, not an accepted change) reaches the
-same number independently —
-`LAST_USED_THROTTLE = 1.hour`, guarding the write with the same *is the previous mark older than
-the interval* check — so the hour is the shape of the problem rather than a local shortcut. The
-cost is stated plainly: the mark can be up to an hour stale, which is why it answers "alive or
-abandoned" and never "at what second". The token list in
+**The mark is written on every use**, so it is exact. The alternative — throttling the write to
+one per hour, which an earlier revision of this branch did and which the patch proposed on the
+same ticket also does (`LAST_USED_THROTTLE = 1.hour`) — was removed on review, on one observed
+fact: every authenticated request on this branch already writes an audit row (`ApiAuthEvent`)
+through the same seam, unconditionally, so the throttle spared no read path — it only made the
+field stale within the hour. Contention on the one row needs no database-specific device either:
+`SKIP LOCKED` / `NOWAIT` (and `SQLITE_BUSY` fail-fast handling for SQLite, where locking is
+per-database, not per-row) were weighed and rejected, because concurrent updates of this row all
+write the same instant — an update lost to a race loses nothing, and a plain `UPDATE` stays
+portable across every adapter Redmine supports. The token list in
 *My account* preloads the marks (`includes(:usage)`), so the page reads them in one query however
 many tokens a user owns.
 
@@ -204,8 +203,8 @@ rest on rows an operator is expected to delete.
 
 **This must be said plainly: a patch implementing this same pillar already exists in the ticket**
 (comment #11, `personal-access-tokens-43881.patch`, attachment 36640, by Bogdan Egikov). It was read as prior art
-after the model here was written, and there is real convergence — the `rmpat_` prefix, digest-only
-storage and the one-hour last-used throttle appear in both. Those are the choices the problem
+after the model here was written, and there is real convergence — the `rmpat_` prefix and
+digest-only storage appear in both. Those are the choices the problem
 pushes you toward, and pretending otherwise by renaming things would be cosmetics.
 
 Where this branch deliberately differs:
@@ -215,9 +214,10 @@ Where this branch deliberately differs:
 | revocation | `destroy` — row deleted | `revoked_on` — row kept | a deleted credential cannot be investigated |
 | expiry precision | `expires_on` is a `date` | `expires_on` is a `datetime` | "expires at end of day in whose timezone" is a question with no good answer on an API credential |
 | last used | `last_used_on` column on the token | `api_credential_usages` row, keyed by kind + id | the same fact is needed for the legacy API key, which cannot get a column without one landing on sessions and autologin too (see §3) |
+| last-used write | throttled to one per hour | on every use | the audit row is already written per request through the same seam, so a throttle spares nothing and only makes the mark stale (see §3) |
 | scope of the patch | PAT + scopes + audit log in one | PAT only | the maintainer (Holger Just, comment #12) asked precisely for the opposite: *"each of the features proposed here are rather large and complex on its own… we should try to separate these features into separate issues"* |
 
-The third row is the important one. That patch was reviewed and the review said: too large, split it.
+The scope row is the important one. That patch was reviewed and the review said: too large, split it.
 Submitting the same shape again ignores the feedback that is sitting in the ticket in public.
 
 **The open question the maintainer raised** (comment #12) is whether personal access tokens should
@@ -333,8 +333,8 @@ curl -s -o /dev/null -w '%{http_code}\n' -u "$TOKEN:x"  localhost:3000/users/cur
 - A token grants **the user's full permissions**. Until scopes land, a personal access token is
   exactly as powerful as the password, minus the web session. It is an improvement in *blast radius
   over time* (revocable, expiring, per-integration) and not yet in *blast radius per request*.
-- The last-used mark is throttled to an hour, so it answers "is this alive", not "when exactly was
-  the last call". It is not an audit log and should not be read as one.
+- The last-used mark is one timestamp per credential: it answers "is this alive, and when was it
+  last seen" — not who did what from where. It is not an audit log and should not be read as one.
 - **A `key=` credential is not API-format-only, and that surprised me.** `find_current_user` gates
   the credential branch on `Setting.rest_api_enabled? && accept_api_auth?` — on the *action*, not on
   `api_request?` — so `GET /issues?key=…` authenticates over plain HTML too. That is pre-existing

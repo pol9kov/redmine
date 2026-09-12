@@ -31,22 +31,21 @@ class ApiCredentialUsage < ApplicationRecord
   API_KEY = 'api_key'
   KINDS = [PERSONAL_ACCESS_TOKEN, API_KEY].freeze
 
-  # The mark is refreshed at most once per interval, so that a burst of API
-  # requests does not turn every authenticated read into a write. It is the
-  # single home of that interval: PersonalAccessToken asks this class.
-  LAST_USED_UPDATE_INTERVAL = 1.hour
-
   validates_presence_of :credential_kind, :credential_id, :last_used_on
   validates_inclusion_of :credential_kind, :in => KINDS
   validates_uniqueness_of :credential_id, :scope => :credential_kind
 
-  # Records that the credential was used, at most once per
-  # LAST_USED_UPDATE_INTERVAL, and returns the row when it was written
+  # Records that the credential was used, on every use, and returns the row.
+  #
+  # Writing on every authenticated request is deliberate: the same request has
+  # already cost an ApiAuthEvent insert on the same seam, so this update adds
+  # no new class of cost to the read path. Concurrent updates of one row all
+  # write the same instant, so an update lost to a race loses nothing.
   def self.record(kind, id, time=Time.now)
     usage = find_by(:credential_kind => kind, :credential_id => id)
     if usage.nil?
       create!(:credential_kind => kind, :credential_id => id, :last_used_on => time)
-    elsif usage.last_used_on <= time - LAST_USED_UPDATE_INTERVAL
+    else
       usage.update_column(:last_used_on, time)
       usage
     end

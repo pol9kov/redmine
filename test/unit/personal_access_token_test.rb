@@ -194,16 +194,13 @@ class PersonalAccessTokenTest < ActiveSupport::TestCase
     assert_not_includes PersonalAccessToken.column_names, 'last_used_on'
   end
 
-  def test_record_usage_should_not_write_more_than_once_per_interval
+  def test_record_usage_should_refresh_the_mark_on_every_use
     token = generate_token
     token.record_usage
     first_use = token.reload.last_used_on
     assert_not_nil first_use
 
-    token.record_usage
-    assert_equal first_use.to_i, token.reload.last_used_on.to_i
-
-    travel_to(ApiCredentialUsage::LAST_USED_UPDATE_INTERVAL.from_now + 1.minute) do
+    travel_to(1.minute.from_now) do
       token.record_usage
       assert token.reload.last_used_on > first_use
     end
